@@ -57,10 +57,10 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onChanged }: {
   };
   return (
     <Page title="Controllers" subtitle="What flies the vehicle other than you, and how each has done."
-          info="Your controllers, in containers, pinned by digest. Each talks ROS 2 to the vehicle exactly as it would to a real one and imports nothing of ours: the same binary should run in a tank and in the sea. A dive pins a build; a person thinks in controllers, so every build folds under one row."
-          actions={<Button kind="primary" onClick={() => setDeploying(true)}>Deploy one</Button>}>
+          info="Your controllers, in containers, pinned by digest. Each talks ROS 2 to the vehicle exactly as it would to a real one and imports nothing of ours: the same binary should run in a tank and in the sea. A dive pins a build; a person thinks in controllers, so every build folds under one row.">
       {platform ? <DeploysNow platform={platform} held={held} onRefresh={onChanged} nudge={nudge} /> : null}
       <Table rows={rows} rowKey={(r) => r.slug} onRow={(r) => onOpen?.(r.slug)}
+             lead={<Button kind="primary" onClick={() => setDeploying(true)}>+ Deploy a controller</Button>}
              search={(r) => `${r.name} ${r.slug}`} searchLabel="Search controllers"
              facets={[{ key: "flown", label: "Flown", value: (r) => r.flew.dives === 0 ? "never flown" : "flown" },
                       { key: "card", label: "Needs", value: (r) => cardOf(r) === "no card" ? "no card" : "a card" }]}

@@ -83,7 +83,8 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
 .tabs button:hover { color: var(--plain); }
 .tabs button[aria-selected="true"] { color: var(--plain); border-bottom-color: var(--coral); }
 .tab-count { margin-left: var(--s2); color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
-.toolbar { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s4); flex-wrap: wrap; }
+/* A page's tools: a row of their own under the bar, outside what scrolls. */
+.page-tools { flex: none; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding: var(--s3) var(--s6); border-bottom: 1px solid var(--edge); }
 .page-body.whole { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .page-body.whole > * { max-width: none; }
 .info-pop p { margin: 0 0 var(--s2); }
@@ -148,7 +149,15 @@ main:has(> .page) { overflow: hidden; padding: 0; display: flex; flex-direction:
 /* ── tables ───────────────────────────────────────────────────────────────── */
 
 .dt { container-type: inline-size; }
-.dt-tools { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
+/* A table's tools and its heads stay at the top of the page as its rows scroll under them. */
+.dt { --dt-tools-h: 56px; }
+.dt-tools {
+  position: sticky; top: calc(-1 * var(--s5)); z-index: 3; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  min-height: var(--dt-tools-h); margin: 0 calc(-1 * var(--s6)); padding: var(--s3) var(--s6);
+  background: color-mix(in srgb, var(--abyss) 82%, transparent); backdrop-filter: blur(14px); border-bottom: 1px solid var(--edge);
+}
+.page-body > .dt:first-child > .dt-tools { margin-top: calc(-1 * var(--s5)); }
+.dt thead th { position: sticky; top: calc(var(--dt-tools-h) - var(--s5)); z-index: 2; background: color-mix(in srgb, var(--abyss) 82%, transparent); backdrop-filter: blur(14px); }
 .dt-search { width: 280px; }
 .dt-count { margin-left: auto; color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
 .facet-list { left: 0; right: auto; max-height: 320px; overflow-y: auto; min-width: 240px; }

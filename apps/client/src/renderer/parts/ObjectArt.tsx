@@ -2,6 +2,7 @@
 // and for the tiles that choose what to add.
 
 export type ObjectKind = "reef" | "pipeline" | "platform" | "wind-foundation" | "structure" | "survey" | "model" | "video"
+  | "cover" | "species"
   // Where a new place's ground comes from.
   | "store" | "earth" | "flat";
 
@@ -17,6 +18,18 @@ export function ObjectArt({ kind, size = 56 }: { kind: ObjectKind; size?: number
 const SEABED = <path d="M4 40c6-2 10 1 16-1s10-3 14-1 8 2 10 1" opacity={0.5} />;
 
 const DRAWN: Record<ObjectKind, React.ReactNode> = {
+  // A map in patches: sand, seagrass, coral.
+  cover: <>
+    <path d="M6 8h36v32H6z" opacity={0.5} />
+    <path d="M6 22c6-3 10 4 16 1s8-9 14-6 6 3 6 3M6 31c5-2 9 2 14 0s9-5 13-2 9 2 9 2" />
+    <path d="M14 13l2 2M28 34l2 2M34 12l2 2" />
+  </>,
+  // Three fish of different sizes: a list of who lives there.
+  species: <>
+    <path d="M8 16c4-4 9-5 14-5 3 0 6 2 8 5-2 3-5 5-8 5-5 0-10-1-14-5zM30 16l5-4v8z" />
+    <path d="M14 30c3-3 6-3.5 9-3.5 2 0 4 1.5 5.5 3.5-1.5 2-3.5 3.5-5.5 3.5-3 0-6-.5-9-3.5zM28.5 30l4-3v6z" />
+    <path d="M30 38c2-1.6 4-2 6-2 1.4 0 2.6.8 3.5 2-.9 1.2-2.1 2-3.5 2-2 0-4-.4-6-2zM39.5 38l2.5-2v4z" opacity={0.7} />
+  </>,
   // Branching coral on the bottom.
   reef: <>
     {SEABED}

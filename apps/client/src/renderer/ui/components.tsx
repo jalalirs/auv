@@ -77,7 +77,8 @@ export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab
   tabs?: Tab[];
   tab?: string;
   onTab?: (key: string) => void;
-  /** Controls for what the body shows: its first row, not part of the bar. */
+  /** Controls for what the body shows: a row under the bar that does not
+   *  scroll away, with the page's own New at its start. */
   toolbar?: React.ReactNode;
   /** Full width; otherwise the body is held to a readable measure. */
   wide?: boolean;
@@ -118,8 +119,9 @@ export function Page({ title, subtitle, info, crumb, onCrumb, actions, tabs, tab
         {status ? <span className="bar-status">{status}</span> : null}
         {actions ? <div className="page-actions">{actions}</div> : null}
       </header>
+      {/* The page's tools stay where they are while what they filter scrolls. */}
+      {toolbar ? <div className="page-tools">{toolbar}</div> : null}
       <div className={`page-body${wide ? " wide" : ""}${fill ? " whole" : ""}`}>
-        {toolbar ? <div className="toolbar">{toolbar}</div> : null}
         {children}
       </div>
     </div>
@@ -244,7 +246,7 @@ export type Column<T> = {
 export type Facet<T> = { key: string; label: string; value: (row: T) => string | undefined };
 
 export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "Search", facets = [], actions,
-                           pageSize = 25, empty, initialSort, chosen, initialPicked, loading, tally }: {
+                           pageSize = 25, empty, initialSort, chosen, initialPicked, loading, tally, lead }: {
   rows: T[];
   columns: Column<T>[];
   rowKey: (row: T) => string;
@@ -266,6 +268,8 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
   /** What the count counts, when a row is more than one thing (a dive flown
    *  five times is one row and five dives): the rows' total and its noun. */
   tally?: { count: (rows: T[]) => number; noun: string };
+  /** The page's own New, at the start of the tools, before the search. */
+  lead?: React.ReactNode;
 }): React.JSX.Element {
   const [words, setWords] = useState("");
   const [picked, setPicked] = useState<Record<string, Set<string>>>(() =>
@@ -313,8 +317,9 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
 
   return (
     <div className={`dt${grows.size === 1 ? " one-grows" : ""}`}>
-      {search || facets.length ? (
+      {search || facets.length || lead ? (
         <div className="dt-tools">
+          {lead}
           {search ? (
             <input className="dt-search" type="search" value={words} placeholder={searchLabel}
                    onChange={(e) => setWords(e.target.value)} />

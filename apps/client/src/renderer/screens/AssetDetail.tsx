@@ -12,6 +12,8 @@ import { ago } from "./parts.js";
 export function kindSaid(one: Pick<Asset, "kind" | "type">): string {
   if (one.kind === "reef") return "reef from a video";
   if (one.kind === "bathymetry") return "seabed survey";
+  if (one.kind === "cover") return "cover map";
+  if (one.kind === "species") return "species list";
   return one.type === "other" || !one.type ? "structure" : one.type.replace("-", " ");
 }
 

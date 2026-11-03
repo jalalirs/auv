@@ -16,6 +16,7 @@ import { WorldMap, type LatLon } from "../parts/WorldMap.js";
 import { kindSaid, nameAndSource } from "./AssetDetail.js";
 import type { Held } from "./Deck.js";
 import { Card, Empty } from "./parts.js";
+import { NewCard } from "../parts/Card.js";
 import { Button, Dialog, Page, Segmented, SkeletonCards, Status, type Tone } from "../ui/components.js";
 
 const VIDEO = /\.(mp4|mov|mkv)$/i;
@@ -33,11 +34,22 @@ const STRUCTURES: { key: StructureType; label: string }[] = [
   { key: "platform", label: "Platform" }, { key: "wind-foundation", label: "Wind foundation" }, { key: "other", label: "Something else" },
 ];
 
-type Filter = "all" | "reef" | "pipeline" | "structure" | "survey";
+type Filter = "all" | "reef" | "pipeline" | "structure" | "survey" | "cover" | "species";
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "Everything" }, { key: "reef", label: "Reefs" }, { key: "pipeline", label: "Pipelines" },
   { key: "structure", label: "Structures" }, { key: "survey", label: "Surveys" },
+  { key: "cover", label: "Cover maps" }, { key: "species", label: "Species" },
 ];
+
+/** A preview drawn off the page as a chart (axes, a white ground), and
+ *  whether it is worth showing: a species list or a scatter of soundings is
+ *  better as its drawing than as a chart cut down to a card. */
+function chartOf(one: Asset): { chart: boolean; show: boolean } {
+  const format = String((one as { format?: string }).format ?? "").toLowerCase();
+  if (one.kind === "species") return { chart: true, show: false };
+  if (one.kind === "bathymetry" && /xyz|csv|txt/.test(format)) return { chart: true, show: false };
+  return { chart: one.kind === "bathymetry" || one.kind === "cover", show: true };
+}
 
 function megabytes(bytes: number): string {
   return bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : `${(bytes / (1 << 20)).toFixed(0)} MB`;
@@ -60,11 +72,12 @@ export function stateOf(one: Reconstruction): { kind?: "good" | "bad" | "busy"; 
 export function artOf(one: Pick<Asset, "kind" | "type">): ObjectKind {
   if (one.kind === "reef") return "reef";
   if (one.kind === "bathymetry") return "survey";
+  if (one.kind === "cover" || one.kind === "species") return one.kind;
   return one.type === "pipeline" || one.type === "platform" || one.type === "wind-foundation" ? one.type : "structure";
 }
 
 function filterOf(art: ObjectKind): Filter {
-  return art === "reef" || art === "pipeline" || art === "survey" ? art : "structure";
+  return art === "reef" || art === "pipeline" || art === "survey" || art === "cover" || art === "species" ? art : "structure";
 }
 
 /** The one line of numbers a card has room for. */
@@ -143,13 +156,15 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset }: {
     ...assets.map((one) => ({
       id: one.id, name: one.name, createdAt: one.createdAt, state: stateOf(one as unknown as Reconstruction),
       art: artOf(one), kind: kindSaid(one), specs: specsOf({ ...(one.footprint ?? {}), ...(one.stats ?? {}) }),
-      picture: one.preview && one.state === "ready" ? one.preview : undefined, reading: false,
+      picture: one.preview && one.state === "ready" && chartOf(one).show ? one.preview : undefined, reading: false,
+      chart: chartOf(one).chart,
       open: () => onOpenAsset?.(one.id),
     })),
     ...(list ?? []).map((one) => ({
       id: one.id, name: one.name, createdAt: one.createdAt, state: stateOf(one),
       art: "reef" as ObjectKind, kind: "reef from a video", specs: specsOf(one.manifest as Record<string, unknown> | undefined),
       picture: pictures[one.id] || undefined, reading: one.state === "ready" && pictures[one.id] === undefined,
+      chart: false,
       open: () => onOpen(one.id),
     })),
   ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)), [assets, list, pictures, onOpen, onOpenAsset]);
@@ -163,7 +178,6 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset }: {
   return (
     <Page title="Objects" subtitle="What goes into a place: reefs, structures, pipelines, surveys."
           info="An object is made on its own and goes into any place later. A reef comes from a dive video, a structure from a 3D model, a pipeline from a line drawn on the map."
-          actions={institution ? <Button kind="primary" onClick={() => setAdding(true)}>New object</Button> : undefined}
           toolbar={<>
             <Segmented label="Kind" value={filter} onChange={setFilter}
                        options={FILTERS.filter((f) => f.key === "all" || counts[f.key] > 0 || f.key === filter)
@@ -172,16 +186,17 @@ export function Reconstructions({ platform, held, onOpen, onOpenAsset }: {
                    value={words} onChange={(e) => setWords(e.target.value)} />
           </>}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
-      {list === undefined ? <SkeletonCards /> : everything.length === 0 ? (
-        <Empty title="No objects yet">Add one with New object: a 3D model, a reef from a dive video, or a pipeline drawn on the map.</Empty>
-      ) : shown.length === 0 ? (
+      {list === undefined ? <SkeletonCards /> : shown.length === 0 && everything.length > 0 ? (
         <Empty title="Nothing matches">Try another kind, or fewer words.</Empty>
       ) : (
         <div className="cards">
+          {institution && !looking ? (
+            <NewCard name="New object" detail="a 3D model, a reef from video, a line, a survey" onClick={() => setAdding(true)} />
+          ) : null}
           {shown.map((one) => {
             const tone: Tone = one.state.kind === "bad" ? "bad" : "busy";
             return (
-              <Card key={one.id} name={nameAndSource(one.name).name} detail={one.kind} picture={one.picture}
+              <Card key={one.id} name={nameAndSource(one.name).name} detail={one.kind} picture={one.picture} chart={one.chart}
                     reading={one.reading} art={<ObjectArt kind={one.art} />}
                     specs={one.state.kind === "good" ? one.specs : [one.state.doing ?? one.state.said]}
                     corner={one.state.kind === "good" ? undefined : <Status tone={tone}>{one.state.said}</Status>}

@@ -49,6 +49,7 @@ import { ControllerDetail } from "../screens/ControllerDetail.js";
 import { AssetDetail } from "../screens/AssetDetail.js";
 import { World } from "../screens/World.js";
 import { Worlds } from "../screens/Worlds.js";
+import { Home } from "../screens/Home.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -470,12 +471,16 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["world", "worlds", "results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon", "run"].map((page) => (
+        {["home", "world", "worlds", "results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon", "run"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
       <main>
-        {where.page === "world" ? (
+        {where.page === "home" ? (
+          <Home platform={p} held={held} packages={packages} free={1} devices={2}
+                onOpenWorld={(place) => setWhere({ page: "world", place })} onOpenDive={(d, r) => said.push(`dive ${d} ${r}`)}
+                onNewDive={() => setWhere((w) => ({ ...w, page: "run" }))} onWorlds={() => setWhere((w) => ({ ...w, page: "worlds" }))} />
+        ) : where.page === "world" ? (
           <World platform={p} held={held} packages={packages} place={where.place ?? "city_looe"}
                  onBack={() => setWhere((w) => ({ ...w, page: "worlds" }))} onChanged={() => said.push("read again")}
                  onDive={(v) => said.push(`dive ${v}`)} onMission={(m) => setWhere({ page: "designer", mission: m, place: where.place ?? "city_looe" })}

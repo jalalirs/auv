@@ -107,7 +107,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
   return (
     <Page title="Dives" subtitle="Every dive, under one condition or many."
           info="A dive flies a mission or a task in a vehicle, under the conditions you chose. Choose one setting for each condition and it is one dive; choose several and it is flown once for each, so you see which condition breaks the plan. Every dive pins its place, vehicle, water, seed and simulator, so flying it again means something. A dive flown again by the same controller is one row, so the rows are fewer than the dives."
-          actions={onNew ? <Button kind="primary" onClick={onNew}>New dive</Button> : undefined}>
+>
       {outstanding.length > 0 ? (
         <section className="running-now">
           <h2>Diving now</h2>
@@ -127,6 +127,7 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
       ) : null}
 
       <Table rows={rows} loading={!held.runsRead || sweeps === undefined} rowKey={(r) => r.key} initialPicked={by ? { by: [by] } : undefined}
+               lead={onNew ? <Button kind="primary" onClick={onNew}>+ New dive</Button> : undefined}
                onRow={open}
                search={(r) => `${r.name} ${r.flownBy} ${r.kind === "run" ? taskOf(r.one) : ""} ${r.state}`} searchLabel="Search dives"
                tally={{ count: dives, noun: "dives" }}

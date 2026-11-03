@@ -77,13 +77,19 @@ export function Home({ platform, held, packages, free, devices, onOpenWorld, onO
     [held, packages, building, onOpenWorld, onOpenDive]);
 
   const worlds = [...held.yourPlaces]
-    .sort((a, b) => (packages.places.get(b.id)?.version.createdAt ?? b.createdAt)
-      .localeCompare(packages.places.get(a.id)?.version.createdAt ?? a.createdAt));
+    .sort((a, b) => String(packages.places.get(b.id)?.version.createdAt ?? b.createdAt ?? "")
+      .localeCompare(String(packages.places.get(a.id)?.version.createdAt ?? a.createdAt ?? "")));
 
   return (
-    <Page title="Home" wide actions={<Button kind="primary" onClick={onNewDive}>New dive</Button>}>
+    <Page title="Home" wide>
       <div className="home">
         <div className="home-tiles">
+          <button type="button" className="home-start" onClick={onNewDive}>
+            <span className="new-mark" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            </span>
+            <span><strong>New dive</strong><small>a world, a mission, a vehicle</small></span>
+          </button>
           <Tile label="Diving now" value={held.runsRead ? diving.length : undefined}
                 said={!held.runsRead ? "" : diving.length ? diving.map((r) => r.name).slice(0, 2).join(", ")
                   : queued ? `${queued} waiting` : "nothing in the water"}
@@ -244,5 +250,6 @@ function happenings(held: Held, packages: Packages, building: Building | undefin
     if (c.state === "ready") out.push({ key: `${c.id}:ready`, at, tone: "good", word: "Deployed", what: c.slug });
     else if (c.state === "failed") out.push({ key: `${c.id}:failed`, at, tone: "bad", word: "Failed", what: `building ${c.slug}` });
   }
-  return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, FEED);
+  // Something with no time to it (an old record) is left out rather than sorted.
+  return out.filter((h) => typeof h.at === "string").sort((a, b) => b.at.localeCompare(a.at)).slice(0, FEED);
 }

@@ -19,7 +19,7 @@ import { kindSaid, nameAndSource } from "./AssetDetail.js";
 import type { Held, Packages } from "./Deck.js";
 import { artOf } from "./Reconstructions.js";
 import { Card, Empty } from "./parts.js";
-import { Button, Menu, Page, Segmented, SkeletonCards, Status } from "../ui/components.js";
+import { Button, Dialog, Page, Segmented, SkeletonCards, Status } from "../ui/components.js";
 
 type Kind = "all" | "places" | "objects" | "vehicles";
 
@@ -44,6 +44,8 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
   // The place being taken or let go of, so its card says so while it works.
   const [working, setWorking] = useState<string | undefined>();
   const [trouble, setTrouble] = useState("");
+  // The card opened: what it is, and what can be done with it, in one place.
+  const [looking, setLooking] = useState<{ place: StorePlace } | { object: Asset } | undefined>();
   const institution = held.institution;
 
   const readStore = useCallback(async () => {
@@ -111,21 +113,7 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
             <div className="cards">
               {store.map((one) => (
                 <StoreCard key={one.id} one={one} photo={pictures[one.id]} pkg={packages.places.get(one.id)}
-                           onOpen={() => onOpenPlace(one.id)}
-                           actions={working === one.id ? (
-                             <Button disabled>Copying…</Button>
-                           ) : (
-                             <>
-                               {copied[one.id]
-                                 ? <Button onClick={() => onOpenPlace(copied[one.id]!)}>Open your copy</Button>
-                                 : <Button kind="secondary" disabled={!institution || working !== undefined} onClick={() => void copyPlace(one)}>Copy to your places</Button>}
-                               <Menu label={`More for ${one.name}`} items={[
-                                 ...(copied[one.id] ? [{ label: "Copy it again", onSelect: () => void copyPlace(one) }] : []),
-                                 { label: "Build a new place on its ground", onSelect: () => onBuildOn?.(one.id) },
-                                 ...(one.adopted ? [{ label: "Stop sharing the store's own", danger: true, onSelect: () => void letGo(one) }] : []),
-                               ]} />
-                             </>
-                           )} />
+                           working={working === one.id} onOpen={() => setLooking({ place: one })} />
               ))}
               {kind === "places" ? ENVIRONMENTS.map((one) => (
                 <Card key={one.key} name={one.name} detail={one.where}
@@ -148,10 +136,8 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
                 return (
                   <Card key={one.id} name={name} detail={source ? `${kindSaid(one)} · ${source}` : kindSaid(one)}
                         picture={one.preview || undefined} art={<ObjectArt kind={artOf(one)} />}
-                        onOpen={() => copied[one.id] ? onOpenObject?.(copied[one.id]!) : undefined}
-                        actions={working === one.id ? <Button disabled>Copying…</Button>
-                          : copied[one.id] ? <Button onClick={() => onOpenObject?.(copied[one.id]!)}>Open your copy</Button>
-                          : <Button kind="secondary" disabled={!institution || working !== undefined} onClick={() => void copyObject(one)}>Copy to your objects</Button>} />
+                        corner={working === one.id ? <Status tone="busy">copying</Status> : copied[one.id] ? <Status tone="good">in your objects</Status> : undefined}
+                        onOpen={() => setLooking({ object: one })} />
                 );
               })}
             </div>
@@ -176,17 +162,48 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
           )}
         </section>
       ) : null}
+      {looking ? (() => {
+        const place = "place" in looking ? looking.place : undefined;
+        const object = "object" in looking ? looking.object : undefined;
+        const id = place?.id ?? object!.id;
+        const mine = copied[id];
+        const close = () => setLooking(undefined);
+        const name = place?.name ?? nameAndSource(object!.name).name;
+        return (
+          <Dialog title={name} onClose={close} wide
+                  actions={<>
+                    {place?.adopted ? <Button kind="danger" disabled={working !== undefined} onClick={() => void letGo(place)}>Stop sharing the store's own</Button> : null}
+                    {place ? <Button kind="ghost" onClick={() => { close(); onBuildOn?.(place.id); }}>Build a new place on its ground</Button> : null}
+                    {place ? <Button onClick={() => { close(); onOpenPlace(place.id); }}>Look inside</Button> : null}
+                    {mine ? <Button onClick={() => { close(); if (place) onOpenPlace(mine); else onOpenObject?.(mine); }}>Open your copy</Button> : null}
+                    <Button kind="primary" disabled={!institution || working !== undefined}
+                            onClick={() => void (place ? copyPlace(place) : copyObject(object!))}>
+                      {working === id ? "Copying…" : mine ? "Copy it again" : place ? "Copy to your places" : "Copy to your objects"}
+                    </Button>
+                  </>}>
+            <div className="store-look">
+              {place ? <StoreCard one={place} photo={pictures[place.id]} pkg={packages.places.get(place.id)} working={false} />
+                : <Card name={name} detail={kindSaid(object!)} picture={object!.preview || undefined} art={<ObjectArt kind={artOf(object!)} />} />}
+              <div className="store-said">
+                <p>{place?.summary ?? nameAndSource(object!.name).source ?? kindSaid(object!)}</p>
+                {place?.copies ? <p className="note">{place.copies === 1 ? "One copy is in your places." : `${place.copies} copies are in your places.`}</p> : null}
+                <p className="note">The store's own never changes; a copy is yours to change, and taking it again makes another.</p>
+              </div>
+            </div>
+          </Dialog>
+        );
+      })() : null}
     </Page>
   );
 }
 
 /** A place in the store: its own photograph when it ships one, else its relief. */
-function StoreCard({ one, photo, pkg, onOpen, actions }: {
+function StoreCard({ one, photo, pkg, onOpen, working }: {
   one: StorePlace;
   photo: string | undefined;
   pkg: PlacePackage | null | undefined;
-  onOpen: () => void;
-  actions: React.ReactNode;
+  onOpen?: () => void;
+  working: boolean;
 }): React.JSX.Element {
   const drawn = usePlacePicture(photo !== undefined ? null : pkg);
   const picture = photo ?? drawn ?? undefined;
@@ -199,9 +216,9 @@ function StoreCard({ one, photo, pkg, onOpen, actions }: {
             one.surveyedFraction !== undefined ? `${Math.round(one.surveyedFraction * 100)}% measured` : one.surveyed ? "surveyed" : "derived depths",
             one.colonies ? `${one.colonies.toLocaleString()} colonies` : "",
           ].filter(Boolean)}
-          corner={one.copies ? <Status tone="good">{one.copies === 1 ? "1 copy in your places" : `${one.copies} copies in your places`}</Status>
+          corner={working ? <Status tone="busy">copying</Status> : one.copies ? <Status tone="good">{one.copies === 1 ? "1 copy in your places" : `${one.copies} copies in your places`}</Status>
             : one.adopted ? <Status tone="good">in your places</Status> : undefined}
-          onOpen={onOpen} actions={actions} />
+          onOpen={onOpen} />
   );
 }
 

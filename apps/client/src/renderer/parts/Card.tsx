@@ -37,9 +37,11 @@ export interface CardProps {
   reading?: boolean;
   /** What can be done with it, along the card's foot: buttons, a menu. */
   actions?: React.ReactNode;
+  /** The picture is a chart with axes round it, cropped to its data. */
+  chart?: boolean;
 }
 
-export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later, reading, actions }: CardProps): React.JSX.Element {
+export function Card({ picture, art, name, detail, specs, corner, chosen, onChoose, onOpen, later, reading, actions, chart }: CardProps): React.JSX.Element {
   const usable = later === undefined;
   const line = cleanLine(detail);
   // A card opens when it is clicked. One that is chosen when clicked, in a
@@ -53,7 +55,7 @@ export function Card({ picture, art, name, detail, specs, corner, chosen, onChoo
          tabIndex={press ? 0 : undefined}
          onClick={usable || opens ? press : undefined}
          onKeyDown={(e) => { if ((usable || opens) && press && (e.key === "Enter" || e.key === " ")) press(); }}>
-      <div className="picture">
+      <div className={chart && picture !== undefined ? "picture chart" : "picture"}>
         {reading
           ? <Skeleton className="cover" />
           : picture !== undefined
@@ -81,6 +83,20 @@ export function Card({ picture, art, name, detail, specs, corner, chosen, onChoo
         <div className="foot" onClick={(e) => e.stopPropagation()}>{actions}</div>
       )}
     </div>
+  );
+}
+
+/** The first card of a list: make a new one. Where the new thing will be,
+ *  not a button in the page's corner. */
+export function NewCard({ name, detail, onClick }: { name: string; detail: string; onClick: () => void }): React.JSX.Element {
+  return (
+    <button type="button" className="card new-card" onClick={onClick}>
+      <span className="new-mark" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+      </span>
+      <strong>{name}</strong>
+      <span>{detail}</span>
+    </button>
   );
 }
 

@@ -4,8 +4,7 @@
 
 import type { Held, Packages } from "./Deck.js";
 import { Page } from "../ui/components.js";
-import { Empty } from "./parts.js";
-import { WorldCard } from "../parts/Card.js";
+import { NewCard, WorldCard } from "../parts/Card.js";
 
 export function Worlds({ held, packages, onOpen, onNew }: {
   held: Held;
@@ -15,16 +14,13 @@ export function Worlds({ held, packages, onOpen, onNew }: {
 }): React.JSX.Element {
   const worlds = held.yourPlaces;
   return (
-    <Page title="Worlds" actions={<button className="primary" onClick={onNew}>New world</button>}>
-      {worlds.length === 0 ? (
-        <Empty title="No worlds yet">Make one from a terrain: a Store copy, your survey, public data or a designed flat.</Empty>
-      ) : (
-        <div className="cards">
+    <Page title="Worlds">
+      <div className="cards">
+          <NewCard name="New world" detail="from a Store copy, your survey, public data or a flat" onClick={onNew} />
           {worlds.map((city) => (
             <WorldCard key={city.id} place={city} packages={packages} held={held} onOpen={() => onOpen(city.id)} />
           ))}
-        </div>
-      )}
+      </div>
     </Page>
   );
 }
