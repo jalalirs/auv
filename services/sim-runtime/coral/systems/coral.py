@@ -105,6 +105,7 @@ class Colonies:
         self.kind = np.array([], dtype=object)
         self.called = None                  # what the survey took each for, where it says
         self.prim = []                      # the drawn colony, when the place names it
+        self.drawn_at = None                # where its drawn geometry stands, if not at `at`
         self.height = np.zeros(0)           # what stands now: a stump is half
         self.broken = np.zeros(0, dtype=bool)
         self.broken_at = np.full(0, np.nan)
@@ -190,6 +191,74 @@ class Colonies:
                                    for i in worst]}
 
 
+def as_edited(described: dict, edits) -> dict:
+    """The place's colonies as its world says they are now.
+
+    `edits` is the world's reef layer, as the claim hands it over: the coral
+    items, {id, kind: "coral", form, x, y, sizeM, headingDeg, built?, prim?,
+    hidden?}. A built one is a colony of the build, moved, turned, resized or
+    re-formed; one not built is new, and is drawn as a copy of a built colony
+    of its form; a hidden one, and a built one the world no longer lists, is
+    not in the dive. Only a place that lists its colonies is edited: a reef
+    drawn as a layer of tens of thousands keeps the layer, and the record says
+    so rather than dropping the reef for the few the world names."""
+    if isinstance(edits, dict):
+        version, items = edits.get("version"), edits.get("items")
+    else:
+        version, items = None, edits
+    if not isinstance(items, list):
+        return described
+    reef = dict(described.get("reef") or {})
+    rows = reef.get("colonies_at") or []
+    if not rows:
+        if items:
+            reef["editsNotTaken"] = ("the place draws its reef as a layer and lists no colonies, "
+                                     "so the world's coral edits are not in this dive")
+            return {**described, "reef": reef}
+        return described
+    built = {str(r["prim"]): r for r in rows if r.get("prim") and r.get("at")}
+    by_form: dict[str, list] = {}
+    for r in built.values():
+        by_form.setdefault(str(r.get("kind", "massive")), []).append(r)
+    kept, used, copies = [], set(), 0
+    for item in items:
+        if not isinstance(item, dict) or item.get("kind", "coral") != "coral" or item.get("hidden"):
+            continue
+        if item.get("x") is None or item.get("y") is None:
+            continue
+        form = str(item.get("form") or "massive")
+        size = float(item.get("sizeM", 0.1))
+        row = {"id": str(item.get("id") or ""), "kind": form, "sizeM": size,
+               "at": [float(item["x"]), float(item["y"])],
+               "headingDeg": float(item.get("headingDeg", 0.0))}
+        was = built.get(str(item.get("prim"))) if item.get("built") else None
+        if was is not None and str(was["prim"]) not in used:
+            used.add(str(was["prim"]))
+            row.update(prim=was["prim"], builtAt=was["at"], builtSizeM=float(was.get("sizeM", size)))
+        else:
+            # New, or its prim is not in this build: a copy of the built colony
+            # of its form nearest its size, or of any colony where none is.
+            like = by_form.get(form) or list(built.values())
+            if like:
+                source = min(like, key=lambda r: abs(float(r.get("sizeM", 0.1)) - size))
+                copies += 1
+                row.update(prim=f"WorldCoral/{_usd_name(row['id'] or f'coral{copies}')}",
+                           copyOf=source["prim"], builtAt=source["at"],
+                           builtSizeM=float(source.get("sizeM", size)))
+        kept.append(row)
+    reef["colonies_at"] = kept
+    reef["notDrawn"] = sorted(set(built) - used)
+    reef["editedBy"] = {"world": version, "colonies": len(kept), "new": copies,
+                        "gone": len(built) - len(used)}
+    return {**described, "reef": reef}
+
+
+def _usd_name(text: str) -> str:
+    import re
+    name = re.sub(r"[^A-Za-z0-9_]", "_", text)
+    return name if name[:1].isalpha() or name[:1] == "_" else "_" + name
+
+
 def colonies_of(described: dict, bottom_under, city=None) -> Colonies:
     """The colonies a place's record lists, stood on its seabed — or, where
     it lists none and draws a reef layer, the colonies in that layer."""
@@ -198,7 +267,7 @@ def colonies_of(described: dict, bottom_under, city=None) -> Colonies:
     if not rows and city is not None and layer and (city / layer).exists():
         return colonies_in_the_layer(city / layer, described)
     c = Colonies()
-    at, size, kind, prim = [], [], [], []
+    at, size, kind, prim, drawn = [], [], [], [], []
     for row in rows:
         if not row.get("at"):
             continue
@@ -207,15 +276,19 @@ def colonies_of(described: dict, bottom_under, city=None) -> Colonies:
         size.append(float(row.get("sizeM", 0.1)))
         kind.append(str(row.get("kind", "massive")))
         prim.append(row.get("prim"))
+        bx, by = (float(v) for v in (row.get("builtAt") or row["at"])[:2])
+        drawn.append((bx, by, float(bottom_under(bx, by))))
     n = len(at)
     c.at = np.array(at, dtype=float).reshape(n, 3)
     c.size = np.array(size, dtype=float)
     c.kind = np.array(kind, dtype=object)
     c.prim = prim
+    c.drawn_at = np.array(drawn, dtype=float).reshape(n, 3)
     c.height = c.size.copy()
     _fresh(c, n)
-    c.from_ = ("the place's record of its colonies; breaking from Acropora's measured strength "
-               "with an assumed branch size and contact time")
+    edited = (described.get("reef") or {}).get("editedBy")
+    c.from_ = (("the world's reef layer over " if edited else "") + "the place's record of its colonies; "
+               "breaking from Acropora's measured strength with an assumed branch size and contact time")
     return c
 
 

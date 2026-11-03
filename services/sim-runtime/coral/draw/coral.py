@@ -1,6 +1,7 @@
 """Colonies drawn as what happened to them: a broken one is a stump.
 
-Reads    coral (systems/coral.py): which colonies are broken, and where they stand
+Reads    coral (systems/coral.py): which colonies are broken, and where they stand;
+         the place's reef as its world edited it (systems/coral.as_edited)
 
 A colony the vehicle broke is drawn at half its height, cut down about its own
 base, from the frame it broke in. The place names each colony's prim in its
@@ -9,6 +10,8 @@ dive's result.
 """
 
 from __future__ import annotations
+
+import numpy as np
 
 
 def break_them(stage, coral, done: set, units_per_metre: float = 1.0) -> None:
@@ -27,7 +30,10 @@ def break_them(stage, coral, done: set, units_per_metre: float = 1.0) -> None:
         prim = stage.GetPrimAtPath("/World/" + str(name).lstrip("/"))
         if not prim or not prim.IsValid():
             continue
-        base = Gf.Vec3d(*(float(c) * units_per_metre for c in coral.at[i]))
+        # About its drawn geometry's own base, which an edited colony has
+        # where it was built, not where the world moved it to.
+        stands = coral.at[i] if coral.drawn_at is None else coral.drawn_at[i]
+        base = Gf.Vec3d(*(float(c) * units_per_metre for c in stands))
         shape = UsdGeom.Xformable(prim)
         shape.AddTranslateOp(opSuffix="base").Set(base)
         if torn:
@@ -36,6 +42,54 @@ def break_them(stage, coral, done: set, units_per_metre: float = 1.0) -> None:
         else:
             shape.AddScaleOp(opSuffix="broken").Set(Gf.Vec3f(1.0, 1.0, float(coral.height[i] / coral.size[i])))
         shape.AddTranslateOp(opSuffix="base", isInverseOp=True)
+
+
+def as_edited(stage, coral, rows: list, not_drawn: list, units_per_metre: float = 1.0) -> dict:
+    """Draw the colonies where the world put them.
+
+    Each built colony's geometry was written where it was built, so a moved
+    one is taken back to its own base, sized, turned (headingDeg is clockwise
+    from north; USD turns anticlockwise) and stood at its new base. A new one
+    is a reference to the built colony it copies, moved the same way. A
+    colony the world hid or no longer lists is deactivated: not drawn, and
+    nothing to collide with. Done once, before the dive starts."""
+    from pxr import Gf, Usd, UsdGeom
+
+    moved = copied = gone = 0
+    for name in not_drawn:
+        prim = stage.GetPrimAtPath("/World/" + str(name).lstrip("/"))
+        if prim and prim.IsValid():
+            prim.SetActive(False)
+            gone += 1
+    for i, row in enumerate(rows):
+        name, was = row.get("prim"), row.get("builtAt")
+        if not name or not was or i >= len(coral):
+            continue
+        path = "/World/" + str(name).lstrip("/")
+        if row.get("copyOf"):
+            prim = stage.DefinePrim(path)
+            prim.GetReferences().AddInternalReference("/World/" + str(row["copyOf"]).lstrip("/"))
+            prim.SetActive(True)
+            UsdGeom.Imageable(prim).GetVisibilityAttr().Set(UsdGeom.Tokens.inherited)
+            copied += 1
+        else:
+            prim = stage.GetPrimAtPath(path)
+            if not prim or not prim.IsValid():
+                continue
+        grown = float(row.get("sizeM", 0.1)) / max(1e-6, float(row.get("builtSizeM") or row.get("sizeM", 0.1)))
+        turn = float(row.get("headingDeg", 0.0))
+        now = coral.at[i]
+        then = coral.drawn_at[i] if coral.drawn_at is not None else now
+        if not row.get("copyOf") and abs(grown - 1.0) < 1e-6 and abs(turn) < 1e-6 \
+                and float(np.linalg.norm(now - then)) < 1e-6:
+            continue
+        shape = UsdGeom.Xformable(prim)
+        shape.AddTranslateOp(opSuffix="world").Set(Gf.Vec3d(*(float(v) * units_per_metre for v in now)))
+        shape.AddRotateZOp(opSuffix="world").Set(-turn)
+        shape.AddScaleOp(opSuffix="world").Set(Gf.Vec3f(grown, grown, grown))
+        shape.AddTranslateOp(opSuffix="built").Set(Gf.Vec3d(*(-float(v) * units_per_metre for v in then)))
+        moved += 0 if row.get("copyOf") else 1
+    return {"moved": moved, "copied": copied, "notDrawn": gone}
 
 
 class Polyps:

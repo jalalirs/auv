@@ -229,3 +229,51 @@ def test_polyps_are_out_at_night_and_in_by_day_and_in_when_disturbed():
         world.clock.simulated = 0.5 * k
         corals.the_polyps(world)
     assert c.polyps[0] > 0.6
+
+
+def _tank():
+    return {"reef": {"colonies_at": [
+        {"kind": "table", "sizeM": 0.5, "at": [1.0, 0.0], "prim": "Tank/Coral0"},
+        {"kind": "table", "sizeM": 0.3, "at": [2.0, 0.0], "prim": "Tank/Coral1"},
+        {"kind": "brain", "sizeM": 0.4, "at": [3.0, 0.0], "prim": "Tank/Coral2"}]}}
+
+
+def test_the_world_moves_hides_and_drops_the_built_colonies():
+    from systems.coral import as_edited, colonies_of
+
+    edits = {"version": "ver_w", "items": [
+        {"id": "coral-1", "kind": "coral", "form": "table", "x": 1.5, "y": 0.5, "sizeM": 1.0,
+         "headingDeg": 90, "built": True, "prim": "Tank/Coral0"},
+        {"id": "coral-2", "kind": "coral", "form": "table", "x": 2.0, "y": 0.0, "sizeM": 0.3,
+         "built": True, "prim": "Tank/Coral1", "hidden": True}]}
+    described = as_edited(_tank(), edits)
+    reef = described["reef"]
+    assert [r["prim"] for r in reef["colonies_at"]] == ["Tank/Coral0"]
+    assert reef["notDrawn"] == ["Tank/Coral1", "Tank/Coral2"]
+    assert reef["editedBy"] == {"world": "ver_w", "colonies": 1, "new": 0, "gone": 2}
+    c = colonies_of(described, lambda x, y: -2.0 - x)
+    assert len(c) == 1
+    assert np.allclose(c.at[0], [1.5, 0.5, -3.5])
+    # Its geometry still stands where it was built, which a stump is cut about.
+    assert np.allclose(c.drawn_at[0], [1.0, 0.0, -3.0])
+    assert c.size[0] == 1.0
+
+
+def test_a_new_colony_is_a_copy_of_a_built_one_of_its_form():
+    from systems.coral import as_edited
+
+    edits = [{"id": "new 1", "kind": "coral", "form": "table", "x": 0.0, "y": 1.0, "sizeM": 0.35}]
+    row = as_edited(_tank(), edits)["reef"]["colonies_at"][0]
+    assert row["copyOf"] == "Tank/Coral1"           # the table nearest its size
+    assert row["prim"] == "WorldCoral/new_1"
+    assert row["builtAt"] == [2.0, 0.0]
+
+
+def test_a_reef_drawn_as_a_layer_keeps_its_layer_and_says_so():
+    from systems.coral import as_edited
+
+    described = {"reef": {"prototypeKinds": ["stony"]}}
+    edited = as_edited(described, [{"id": "c", "kind": "coral", "form": "table", "x": 0, "y": 0}])
+    assert "colonies_at" not in edited["reef"]
+    assert "not in this dive" in edited["reef"]["editsNotTaken"]
+    assert as_edited(_tank(), None) == _tank()

@@ -3284,11 +3284,24 @@ class Dive:
             self.say("flow_grid", cells=list(self.ocean.flow.shape), cellM=self.ocean.flow.cell,
                      follows=self.ocean.flow.follows, from_=self.ocean.flow.from_)
         # The coral, solid where it is stony (systems/coral.py).
-        from systems.coral import colonies_of
+        from systems.coral import as_edited, colonies_of
+        # The world's reef layer, where the dive was given one: the colonies
+        # as the person who designed the place left them.
+        described = as_edited(described, self.brief.get("colonies"))
+        reef = described.get("reef") or {}
         self.ocean.replace("coral", colonies_of(described, bottom_under, city))
         if len(self.ocean.coral):
             self.say("coral_is", colonies=len(self.ocean.coral),
                      solid=int(self.ocean.coral.solid().sum()), from_=self.ocean.coral.from_)
+        if reef.get("editedBy"):
+            drawn = {}
+            if getattr(self, "stage", None) is not None and self.up_axis == "Z":
+                from draw import coral as drawn_coral
+                drawn = drawn_coral.as_edited(self.stage, self.ocean.coral, reef["colonies_at"],
+                                              reef.get("notDrawn") or [], self.units_per_metre)
+            self.say("coral_as_the_world_says", **reef["editedBy"], drawn=drawn)
+        elif reef.get("editsNotTaken"):
+            self.say("coral_as_the_world_says", notTaken=reef["editsNotTaken"])
         if asked_for("IOCEAN_LIFE", 1.0) == 0.0:
             self.say("no_life", why="asked for a reef with nothing living in it")
             return
