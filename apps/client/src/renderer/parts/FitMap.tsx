@@ -4,6 +4,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { paintDepths } from "./Relief.js";
+
 export type Spot = { at: [number, number]; headingDeg: number; startAt?: number[] };
 
 export function FitMap({ heightsUrl, rows, columns, acrossM, extentM, spots, chosen, start, onChoose, size = 520 }: {
@@ -71,20 +73,18 @@ export function FitMap({ heightsUrl, rows, columns, acrossM, extentM, spots, cho
           if (Number.isFinite(h) && h <= 0) { lo = Math.min(lo, h); hi = Math.max(hi, h); }
         }
       }
-      const image = g.createImageData(columns, rows);
+      // Charted as every seabed is (Relief.ts): the blue ramp over what the
+      // window shows, lit from the north-west, with thin contours.
+      const depths = new Float32Array(rows * columns);
       for (let r = 0; r < rows; r++) {
         for (let k = 0; k < columns; k++) {
           // Row 0 is the south edge; the picture's top is north.
-          const h = heights[r * columns + k]!;
-          const t = Number.isFinite(h) ? Math.min(1, Math.max(0, (h - lo) / Math.max(hi - lo, 1e-6))) : 0;
-          const o = ((rows - 1 - r) * columns + k) * 4;
-          const dry = h > 0;
-          image.data[o] = dry ? 170 : 10 + 60 * t;
-          image.data[o + 1] = dry ? 150 : 40 + 150 * t;
-          image.data[o + 2] = dry ? 110 : 70 + 150 * t;
-          image.data[o + 3] = 255;
+          depths[(rows - 1 - r) * columns + k] = -heights[r * columns + k]!;
         }
       }
+      const image = g.createImageData(columns, rows);
+      paintDepths(depths, columns, rows, Number.isFinite(lo) ? Math.max(0.5, -lo) : 1, acrossM / columns, image.data,
+                  Math.min(12, Math.max(2, (acrossM / Math.max(0.5, -lo)) * 0.08)));
       const off = new OffscreenCanvas(columns, rows);
       off.getContext("2d")!.putImageData(image, 0, 0);
       g.imageSmoothingEnabled = true;

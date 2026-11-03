@@ -77,7 +77,7 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onChanged }: {
                      </div>
                    </div>
                  ) },
-               { key: "dives", label: "Runs", align: "right", sort: (a, b) => a.flew.dives - b.flew.dives,
+               { key: "dives", label: "Dives", align: "right", sort: (a, b) => a.flew.dives - b.flew.dives,
                  render: (r) => r.flew.dives || <span className="cell-meta">never</span> },
                { key: "score", label: "Scored", align: "right", sort: (a, b) => (a.flew.score ?? -1) - (b.flew.score ?? -1),
                  render: (r) => r.flew.score === undefined ? <span className="cell-meta">—</span> : <b>{(r.flew.score * 100).toFixed(0)}%</b> },
@@ -91,9 +91,9 @@ export function Autonomy({ platform, held, onFly, onRuns, onOpen, onChanged }: {
              ]}
              actions={(r) => (
                <>
-                 <Button onClick={() => onFly?.(r.newest.id)}>Fly with it</Button>
                  <Menu items={[
-                   { label: "Its runs", disabled: r.flew.dives === 0, onSelect: () => onRuns?.(r.name) },
+                   { label: "Fly with it", onSelect: () => onFly?.(r.newest.id) },
+                   { label: "Its dives", disabled: r.flew.dives === 0, onSelect: () => onRuns?.(r.name) },
                    ...((r.newest as { source?: { kind?: string } }).source?.kind === "git"
                      ? [{ label: "Pull latest from GitHub", onSelect: () => void pullLatest(r.slug) }] : []),
                  ]} />

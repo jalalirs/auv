@@ -71,7 +71,7 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
       <div className="controller-facts">
         <ControllerArt digest={one.newest.imageDigest} size={48} />
         <dl className="asset-facts">
-          <div><dt>runs</dt><dd>{flew.dives || "never flown"}{flew.neverFlew ? ` (and ${flew.neverFlew} the platform could not start)` : ""}</dd></div>
+          <div><dt>dives</dt><dd>{flew.dives || "never flown"}{flew.neverFlew ? ` (and ${flew.neverFlew} the platform could not start)` : ""}</dd></div>
           <div><dt>scored</dt><dd>{flew.score === undefined ? "—" : `${(flew.score * 100).toFixed(0)}% on average`}</dd></div>
           <div><dt>drift</dt><dd>{flew.driftM === undefined ? "—" : `${flew.driftM.toFixed(1)} m on average`}</dd></div>
           <div><dt>last flown</dt><dd>{flew.lastAt ? ago(flew.lastAt) : "never"}</dd></div>
@@ -79,16 +79,16 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
         </dl>
       </div>
       <section className="controller-section">
-        <h2>Runs</h2>
+        <h2>Dives</h2>
         <Table rows={dives} rowKey={(r) => r.run.id}
                onRow={(r) => onReplay?.(r.dive, r.run.id)}
-               search={(r) => `${r.name} ${taskOf(r)} ${r.run.state}`} searchLabel="Search its runs"
+               search={(r) => `${r.name} ${taskOf(r)} ${r.run.state}`} searchLabel="Search its dives"
                facets={[{ key: "task", label: "Task", value: (r) => taskOf(r) || "no task" },
                         { key: "state", label: "State", value: (r) => r.run.state }]}
                initialSort={{ key: "when", down: true }}
                empty={<>It has not flown yet. <a onClick={() => onFly?.(one.newest.id)}>Fly with it</a>.</>}
                columns={[
-                 { key: "dive", label: "Run", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
+                 { key: "dive", label: "Dive", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
                    render: (r) => <><span className="cell-main">{r.name}</span><span className="cell-sub">{taskOf(r) || "no task"}</span></> },
                  { key: "score", label: "Score", align: "right", sort: (a, b) => scoreOf(a) - scoreOf(b),
                    render: (r) => scoreOf(r) >= 0 ? <b>{(scoreOf(r) * 100).toFixed(0)}%</b> : <span className="cell-meta">—</span> },
@@ -99,15 +99,15 @@ export function ControllerDetail({ platform, held, slug, onBack, onFly, onReplay
       </section>
       <section className="controller-section">
         <h2>Versions</h2>
-        <Table rows={one.builds} rowKey={(b) => b.id}
+        {/* A version is flown by clicking its row: no button in the row. */}
+        <Table rows={one.builds} rowKey={(b) => b.id} onRow={(b) => onFly?.(b.id)}
                initialSort={{ key: "when", down: true }}
                columns={[
                  { key: "digest", label: "Version", grow: true,
                    render: (b) => <><span className="cell-main">{`version ${one.builds.length - one.builds.indexOf(b)}`}{b.id === one.newest.id ? " · newest" : ""}</span><span className="cell-sub">{sourceSaid(b.source as Source | undefined)}</span></> },
                  { key: "when", label: "Built", sort: (a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
                    render: (b) => <span className="cell-meta">{b.createdAt ? ago(b.createdAt) : "—"}</span> },
-               ]}
-               actions={(b) => <Button kind="ghost" onClick={() => onFly?.(b.id)}>Fly this version</Button>} />
+               ]} />
       </section>
     </Page>
   );

@@ -24,8 +24,7 @@ import { drawStages } from "../parts/StagesLayer.js";
 import { newestOf } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { BUILT_IN, MANUAL } from "./Dive.js";
-import { Button, Page, Segmented, Skeleton } from "../ui/components.js";
-import { RUN_FROM } from "./flyTabs.js";
+import { Button, Page, Skeleton } from "../ui/components.js";
 
 interface Flyable { mission: Mission; version: AssetVersion; place: string }
 
@@ -62,7 +61,7 @@ export function split(picked: Record<string, string[]>): {
   return { water, decided, doubts, scenarios: Object.keys(doubts).length ? scenarios : 0 };
 }
 
-export function Fly({ platform, held, packages, mission: asked, onDiving, onSwept, onSingleTask, onDesign, onChanged, onBack }: {
+export function Fly({ platform, held, packages, mission: asked, onDiving, onSwept, onDesign, onChanged, onBack }: {
   platform: Platform;
   held: Held;
   packages: Packages;
@@ -228,8 +227,7 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
     ? (hours ? `about ${Math.round(hours * 60)} min` : "")
     : `${scenarios > 0 ? `${scenarios} ways × ${repeats}` : ""}${hours ? `${scenarios > 0 ? " · " : ""}about ${((hours * runs) / machines).toFixed(1)} h on ${machines} machine${machines === 1 ? "" : "s"}` : ""}`;
   return (
-    <Page title="New run" subtitle="A mission in a vehicle, under the conditions you choose." crumb="Runs" onCrumb={onBack}
-          toolbar={<Segmented label="What it flies" value="plan" options={RUN_FROM} onChange={(key) => { if (key === "task") onSingleTask(); }} />} wide
+    <Page title="Rehearse" crumb="New dive" onCrumb={onBack} wide
           actions={flyable && flyable.length > 0 ? (
             <>
               {summary ? <span className="action-summary">{summary}</span> : null}

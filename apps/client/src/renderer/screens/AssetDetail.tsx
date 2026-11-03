@@ -42,7 +42,8 @@ function valueSaid(v: unknown): string {
 export function AssetDetail({ platform, id, places, onBack, onCompose, onPlace }: {
   platform: Platform;
   id: string;
-  /** Where it could go. */
+  /** Where it could go. Only your own are offered: a store place you have
+   *  not taken is in this list but is not yours to put things in. */
   places: City[];
   onBack: () => void;
   /** The New place screen, with this survey as its ground. */
@@ -53,6 +54,8 @@ export function AssetDetail({ platform, id, places, onBack, onCompose, onPlace }
   const [one, setOne] = useState<Asset | undefined>();
   const [placing, setPlacing] = useState(false);
   const [trouble, setTrouble] = useState("");
+  // Your places, as the side bar counts them (held.yourPlaces).
+  const yours: City[] | undefined = places;
   useEffect(() => {
     let live = true;
     const read = () => platform.getAsset(id).then((a) => { if (live) setOne(a); })
@@ -113,8 +116,9 @@ export function AssetDetail({ platform, id, places, onBack, onCompose, onPlace }
       {placing ? (
         <Dialog title={`Place ${name} in`} onClose={() => setPlacing(false)}>
           <div className="place-choice">
-            {places.length === 0 ? <p className="note">You have no places yet. Make one under Places first.</p> : null}
-            {places.map((p) => (
+            {yours === undefined ? <SkeletonLines lines={3} />
+              : yours.length === 0 ? <p className="note">You have no places yet. Make one under Places first.</p> : null}
+            {(yours ?? []).map((p) => (
               <button key={p.id} type="button" onClick={() => onPlace(one.id, p.id)}>{p.name}</button>
             ))}
           </div>

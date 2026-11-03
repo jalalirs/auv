@@ -10,7 +10,7 @@
 // product is visible before the whole of it exists.
 
 import type { Held, Packages } from "./Deck.js";
-import { PlaceCard } from "./Dive.js";
+import { WorldCard } from "../parts/Card.js";
 import { Empty } from "./parts.js";
 import { useState } from "react";
 import type { City, Platform } from "@coral-city/api";
@@ -56,8 +56,8 @@ export function Places({ platform, held, packages, onOpen, onBuild, onStore, onC
     && one.ownedByOrg === institution.id;
 
   return (
-    <Page title="Places" subtitle="Your places. A run pins the version it ran in."
-          info="A place is its ground and the objects put on it. Take one iOcean has built from the Store, or compose your own with New place. A run pins the version it ran in, so the reef you dived is the reef anybody can dive again."
+    <Page title="Places" subtitle="Your places. A dive pins the version it flew in."
+          info="A place is its ground and the objects put on it. Take one iOcean has built from the Store, or compose your own with New place. A dive pins the version it flew in, so the reef you dived is the reef anybody can dive again."
           actions={onBuild ? <Button kind="primary" onClick={onBuild}>New place</Button> : undefined}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
       {yours.length === 0 ? (
@@ -65,7 +65,7 @@ export function Places({ platform, held, packages, onOpen, onBuild, onStore, onC
       ) : (
         <div className="cards">
           {yours.map((one) => (
-            <PlaceCard key={one.id} place={one} packages={packages} onOpen={() => onOpen(one.id)}
+            <WorldCard key={one.id} place={one} packages={packages} held={held} onOpen={() => onOpen(one.id)}
                        actions={mayRetire(one) ? (
                          <Menu label={`More for ${one.name}`}
                                items={[{ label: "Retire", danger: true, onSelect: () => setRetiring(one) }]} />
@@ -80,7 +80,7 @@ export function Places({ platform, held, packages, onOpen, onBuild, onStore, onC
                   <Button kind="danger" disabled={busy} onClick={() => void retire(retiring)}>{busy ? "Retiring…" : "Retire"}</Button>
                 </>}>
           <p>It leaves your places and no new dives can be made in it.</p>
-          <p className="note">Its history is kept: every version, run and file stays, and dives already flown in it still replay.</p>
+          <p className="note">Its history is kept: every version, dive and file stays, and dives already flown in it still replay.</p>
         </Dialog>
       ) : null}
     </Page>

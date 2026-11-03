@@ -14,7 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { AssetVersion, Layout, Mission, Platform } from "@coral-city/api";
+import type { AssetVersion, Mission, Platform } from "@coral-city/api";
 
 import { TASKS, type Task } from "../catalog/tasks.js";
 import {
@@ -25,8 +25,10 @@ import { centreOf, groundOf, SiteChart, type Frame, type Ground, type Thing } fr
 import { drawStages } from "../parts/StagesLayer.js";
 import { TaskArt } from "../parts/TaskArt.js";
 import { newestOf } from "../platform/packages.js";
+import { layerOf, readWorld, type WorldOf } from "../platform/world.js";
 import type { Held, Packages } from "./Deck.js";
 import { Empty, PageHead, Pill } from "./parts.js";
+import "../parts/world.css";
 
 /** What a plan of work says. */
 interface Plan {
@@ -74,24 +76,26 @@ function launchAt(plan: Plan, things: Drawn[], fallback: P): P {
   return fallback;
 }
 
-export function Designer({ platform, held, packages, mission, place, onBack, onFly }: {
+export function Designer({ platform, held, packages, mission, place, onBack, onFly, onMade }: {
   platform: Platform;
   held: Held;
   packages: Packages;
+  /** The mission, or "new" to start one in this world. */
   mission: string;
   place: string;
   onBack: () => void;
   onFly: (mission: string) => void;
+  /** A new mission was started: its id, to open it. */
+  onMade?: (id: string) => void;
 }): React.JSX.Element {
   const [found, setFound] = useState<Mission | undefined>();
   const [missing, setMissing] = useState(false);
   const [ground, setGround] = useState<Ground | undefined>();
-  const [layouts, setLayouts] = useState<Layout[]>([]);
-  const [layoutVersions, setLayoutVersions] = useState<Map<string, AssetVersion>>(new Map());
+  const [world, setWorld] = useState<WorldOf | undefined>();
+  const [worldVersions, setWorldVersions] = useState<AssetVersion[]>([]);
   const [cityVersion, setCityVersion] = useState("");
   const [saved, setSaved] = useState<AssetVersion[]>([]);
 
-  const [layout, setLayout] = useState("");
   const [plan, setPlan] = useState<Plan>({ stages: [] });
   const [chosen, setChosen] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -110,10 +114,19 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
 
   useEffect(() => {
     let stale = false;
+    if (mission === "new") {
+      // A mission belongs to the world it is written in, so it is started
+      // here, in it, and opened.
+      const slug = `mission-${Date.now().toString(36)}`;
+      void platform.startMission(place, { slug, name: "New mission" })
+        .then((made) => { if (!stale) onMade?.(made.id); })
+        .catch(() => { if (!stale) setMissing(true); });
+      return () => { stale = true; };
+    }
     void platform.mission(mission).then((one) => { if (!stale) setFound(one); })
       .catch(() => { if (!stale) setMissing(true); });
     return () => { stale = true; };
-  }, [platform, mission]);
+  }, [platform, mission]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Which vehicle each run flew: a run names a version, and the estimate wants
   // every run of a vehicle, whichever version of it.
@@ -125,27 +138,23 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
     return () => { stale = true; };
   }, [platform, held.vehicles]);
 
-  // The place, pinned, and every arrangement of it with what it holds.
+  // The world it is written in, at its newest version, and the package that
+  // version was baked into.
   useEffect(() => {
     let stale = false;
+    const city = held.places.find((p) => p.id === place);
     void (async () => {
-      const [cities, made] = await Promise.all([
-        platform.versionsOfPlace(place).catch((): AssetVersion[] => []),
-        platform.layoutsOf(place).catch((): Layout[] => []),
-      ]);
+      const cities = await platform.versionsOfPlace(place).catch((): AssetVersion[] => []);
+      const read = city ? await readWorld(platform, city, pkg) : undefined;
+      const versions = read?.world ? await platform.versionsOfWorld(read.world.id).catch((): AssetVersion[] => []) : [];
       if (stale) return;
-      setCityVersion(newestOf(cities)?.id ?? "");
+      setCityVersion(read?.document.bake?.version ?? newestOf(cities)?.id ?? "");
       setPlaceVersions(new Set(cities.map((one) => one.id)));
-      setLayouts(made);
-      const newest = new Map<string, AssetVersion>();
-      for (const one of made) {
-        const versions = await platform.versionsOfLayout(one.id).catch((): AssetVersion[] => []);
-        if (versions[0] !== undefined) newest.set(one.id, versions[0]);
-      }
-      if (!stale) setLayoutVersions(newest);
+      setWorld(read);
+      setWorldVersions(versions);
     })();
     return () => { stale = true; };
-  }, [platform, place]);
+  }, [platform, place, pkg?.version.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // What was written last.
   const readSaved = useCallback(() => {
@@ -160,39 +169,16 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
   }, [platform, mission]);
   useEffect(readSaved, [readSaved]);
 
-  // The arrangement it was saved over, once the arrangements are known.
-  // Pinned: the version the plan names, not whatever that arrangement says now.
-  const [pinnedThings, setPinnedThings] = useState<Thing[] | undefined>();
-  useEffect(() => {
-    if (!plan.layoutVersionId) { setPinnedThings(undefined); return; }
-    const owner = layouts.find((one) => layoutVersions.get(one.id)?.id === plan.layoutVersionId);
-    if (owner && layout === "") setLayout(owner.id);
-    let stale = false;
-    void (async () => {
-      for (const one of layouts) {
-        const versions = await platform.versionsOfLayout(one.id).catch((): AssetVersion[] => []);
-        const pinned = versions.find((v) => v.id === plan.layoutVersionId);
-        if (pinned) {
-          if (!stale) {
-            setLayout((was) => was || one.id);
-            setPinnedThings(((pinned.document as { things?: Thing[] } | undefined)?.things) ?? []);
-          }
-          return;
-        }
-      }
-    })();
-    return () => { stale = true; };
-  }, [platform, layouts, layoutVersions, plan.layoutVersionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // What is laid out: the pinned version when reading; the newest of the
-  // chosen arrangement when that has been changed while editing.
+  // What is in the world: the version the mission was saved against when
+  // reading, so a stage points at what was there; the newest when editing,
+  // which is what a save pins.
+  const pinnedVersion = worldVersions.find((v) => v.id === plan.layoutVersionId);
   const things: Thing[] = useMemo(() => {
-    const chosenVersion = layoutVersions.get(layout);
-    if (chosenVersion && chosenVersion.id !== plan.layoutVersionId) {
-      return ((chosenVersion.document as { things?: Thing[] } | undefined)?.things) ?? [];
-    }
-    return pinnedThings ?? [];
-  }, [layout, layoutVersions, plan.layoutVersionId, pinnedThings]);
+    const document = (editing || !pinnedVersion ? world?.document : pinnedVersion.document) as WorldOf["document"] | undefined;
+    const items = (document && layerOf(document, "structures")?.items) ?? [];
+    return items.filter((t) => t.kind !== "object") as unknown as Thing[];
+  }, [world, pinnedVersion, editing]);
+  const worldMoved = pinnedVersion !== undefined && world?.version !== undefined && pinnedVersion.id !== world.version.id;
   const drawn: Drawn[] = things as unknown as Drawn[];
 
   const begin = pkg?.site?.beginAt;
@@ -255,13 +241,29 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
       if (best >= 0) setChosen(best);
       return;
     }
+    // An inspection is of something: the nearest thing in the world to the
+    // click, not a circle on open ground.
+    if (at?.kind === "inspect") {
+      let best: Drawn | undefined, bestD = acrossM / 25;
+      for (const one of drawn) {
+        const c = centreOf(one as unknown as Thing);
+        const d = Math.hypot(c.x - where.x, c.y - where.y);
+        if (d < bestD) { best = one; bestD = d; }
+      }
+      if (!best) { setTrouble("click a thing in the world to inspect it"); return; }
+      const c = centreOf(best as unknown as Thing);
+      setTrouble("");
+      setStage(chosen, { ...at, over: best.id, target: { x: c.x, y: c.y } });
+      setDrawing(undefined);
+      return;
+    }
     const clicks = [...drawing, p];
     if ((mode === "point" && clicks.length >= 1) || ((mode === "line" || mode === "area") && clicks.length >= 2)) {
       finishDrawing(clicks);
       return;
     }
     setDrawing(clicks);
-  }, [acrossM, placingLaunch, drawing, legs, mode, finishDrawing]);
+  }, [acrossM, placingLaunch, drawing, legs, mode, finishDrawing, at, drawn, chosen, setStage]);
 
   // The plan over the chart: the transit between stages dashed, each stage
   // drawn as what it is, the chosen one in the vehicle's colour, numbered.
@@ -280,13 +282,13 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
   }, [plan.stages, legs, drawn, chosen, drawing, launch.x, launch.y]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useCallback(async () => {
-    const pinned = layoutVersions.get(layout);
+    const pinned = world?.version;
     setSaying("saving"); setTrouble("");
     try {
       const version = await platform.saveMission(mission, {
         describedBy: "coral-city/mission/v1",
         cityVersionId: cityVersion,
-        layoutVersionId: pinned?.id ?? plan.layoutVersionId ?? "",
+        layoutVersionId: pinned?.id ?? "",
         ...(plan.launch ? { launch: plan.launch } : {}),
         stages: plan.stages,
       } as never, `${plan.stages.length} stages`);
@@ -297,18 +299,19 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
       setSaying("");
       setTrouble(thrown instanceof Error ? thrown.message : "it would not save");
     }
-  }, [platform, mission, cityVersion, layoutVersions, layout, plan, readSaved]);
+  }, [platform, mission, cityVersion, world, plan, readSaved]);
 
-  if (missing) return <Empty title="Not a plan you have">It may have been archived, or you were never granted it.</Empty>;
+  if (missing) return <Empty title="Not a mission you have">It may have been archived, or you were never granted it.</Empty>;
+  if (mission === "new") return <Empty title="Starting a mission">In {held.places.find((p) => p.id === place)?.name ?? "this world"}.</Empty>;
 
   const numbers = at === undefined ? [] : [...(NUMBERS[at.kind] ?? []), ALLOW];
   const newest = saved[0];
 
   return (
     <>
-      <PageHead title={found?.name ?? "A plan of work"}
-                says={`${site?.name ?? "a place"}${newest ? ` · version ${newest.ordinal}` : " · not saved yet"}${found?.summary ? ` · ${found.summary}` : ""}`}
-                back="Missions" onBack={onBack}
+      <PageHead title={found?.name ?? "A mission"}
+                says={`${newest ? `version ${newest.ordinal}` : "not saved yet"}${worldMoved ? " · the world has changed since: save to fly it in the newest" : ""}`}
+                back={site?.name ?? "World"} onBack={onBack}
                 aside={<span className="designer-acts">
                   <Pill>{minutes(flyS)} flying · {minutes(allowS)} allowed</Pill>
                   {editing
@@ -319,18 +322,9 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
 
       <section className={editing ? "designer editing" : "designer"}>
         <div className="palette">
-          <h3>Over which arrangement</h3>
-          {editing ? (
-            <select value={layout} onChange={(e) => setLayout(e.target.value)}>
-              <option value="">none — bare ground</option>
-              {layouts.map((one) => (
-                <option key={one.id} value={one.id} disabled={!layoutVersions.has(one.id)}>
-                  {one.name}{layoutVersions.has(one.id) ? "" : " (nothing saved)"}
-                </option>
-              ))}
-            </select>
-          ) : <p className="said">{layouts.find((one) => one.id === layout)?.name ?? "bare ground"}</p>}
-          <p className="quiet">Pinned: it is flown over the arrangement as it was when the plan was saved.</p>
+          <h3>In this world</h3>
+          <p className="said">{site?.name ?? "this world"}{(editing ? world?.version : pinnedVersion ?? world?.version)
+            ? `, version ${(editing ? world?.version : pinnedVersion ?? world?.version)!.ordinal}` : ""} · {things.length} things to work with</p>
 
           <h3>Where it goes in</h3>
           {editing ? (
@@ -362,7 +356,8 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
                           setChosen(plan.stages.length);
                           setDrawing(drawMode(made.kind) === "none" ? undefined : []);
                         }}>
-                  <span className="mark"><TaskArt kind={kindOf(one)} /></span>{one.name}
+                  <span className="mark"><TaskArt kind={kindOf(one)} /></span>
+                  <span className="tool-says"><strong>{one.name}</strong><small>{one.asks}</small></span>
                 </button>
               ))}
             </>
@@ -380,6 +375,7 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
             <span>ground <b>{under === undefined ? "—" : `${under.toFixed(acrossM < 20 ? 2 : 1)} m`}</b></span>
             <span className="resolves">
               {placingLaunch ? "click where it goes in"
+                : drawing !== undefined && at?.kind === "inspect" ? "click the thing to inspect"
                 : drawing !== undefined && at ? drawPrompt(at.kind, drawing.length)
                 : editing ? "choose a stage, then Draw it" : "reading — Edit to change it"}
             </span>

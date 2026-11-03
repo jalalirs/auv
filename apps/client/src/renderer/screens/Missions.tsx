@@ -38,7 +38,7 @@ export function Missions({ platform, held, onOpen, onFly }: {
   onFly: (mission: string) => void;
 }): React.JSX.Element {
   const [rows, setRows] = useState<Row[] | undefined>();
-  const [where, setWhere] = useState<string>(() => held.places[0]?.id ?? "");
+  const [where, setWhere] = useState<string>(() => held.yourPlaces[0]?.id ?? "");
   const [naming, setNaming] = useState("");
   const [planning, setPlanning] = useState(false);
   const [archiving, setArchiving] = useState<string | undefined>();
@@ -103,17 +103,17 @@ export function Missions({ platform, held, onOpen, onFly }: {
 
   return (
     <Page title="Missions" subtitle="Plans of work: a place, how it is arranged, and the stages in order."
-          info="A mission is drawn on its place's chart, flown by anybody, and compared across both. Archived, never deleted: a run that flew a version of it still says what it flew."
-          actions={<Button kind="primary" onClick={() => setPlanning(true)} disabled={held.places.length === 0}>New plan</Button>}>
+          info="A mission is drawn on its place's chart, flown by anybody, and compared across both. Archived, never deleted: a dive that flew a version of it still says what it flew."
+          actions={<Button kind="primary" onClick={() => setPlanning(true)} disabled={held.yourPlaces.length === 0}>New mission</Button>}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
       {(
         <Table rows={rows ?? []} loading={rows === undefined} rowKey={(r) => r.mission.id} onRow={(r) => onOpen(r.mission.id, r.place)}
-               search={(r) => `${r.mission.name} ${r.mission.summary ?? ""} ${placeName(r.place)}`} searchLabel="Search plans"
+               search={(r) => `${r.mission.name} ${r.mission.summary ?? ""} ${placeName(r.place)}`} searchLabel="Search missions"
                facets={[{ key: "place", label: "Place", value: (r) => placeName(r.place) }]}
                initialSort={{ key: "saved", down: true }}
-               empty={<>Nothing is planned yet. <a onClick={() => setPlanning(true)}>Plan one</a> and draw it on its place&rsquo;s chart.</>}
+               empty={<>No missions yet. <a onClick={() => setPlanning(true)}>Make one</a> and draw it on its place&rsquo;s chart.</>}
                columns={[
-                 { key: "plan", label: "Plan", sort: (a, b) => a.mission.name.localeCompare(b.mission.name),
+                 { key: "plan", label: "Mission", sort: (a, b) => a.mission.name.localeCompare(b.mission.name),
                    render: (r) => <><span className="cell-main">{r.mission.name}</span>{r.mission.summary ? <span className="cell-sub">{r.mission.summary}</span> : null}</> },
                  { key: "place", label: "Place", priority: 2, sort: (a, b) => placeName(a.place).localeCompare(placeName(b.place)),
                    render: (r) => <span className="cell-meta">{placeName(r.place)}</span> },
@@ -123,26 +123,23 @@ export function Missions({ platform, held, onOpen, onFly }: {
                    sort: (a, b) => (a.newest?.createdAt ?? "").localeCompare(b.newest?.createdAt ?? ""),
                    render: (r) => <span className="cell-meta">{r.newest ? `v${r.newest.ordinal} · ${when(r.newest.createdAt)}` : "not yet"}</span> },
                  { key: "flown", label: "Flown", align: "right", sort: (a, b) => (a.cost?.runs ?? 0) - (b.cost?.runs ?? 0),
-                   render: (r) => <span className="cell-meta">{r.cost?.runs ? `${r.cost.runs} ${r.cost.runs === 1 ? "run" : "runs"}` : "never"}</span> },
+                   render: (r) => <span className="cell-meta">{r.cost?.runs ? `${r.cost.runs} ${r.cost.runs === 1 ? "dive" : "dives"}` : "never"}</span> },
                ]}
                actions={(r) => (
-                 <>
-                   <Button disabled={!r.newest} onClick={() => onFly(r.mission.id)}>Fly</Button>
-                   <Menu items={[
-                     { label: "Open on its chart", onSelect: () => onOpen(r.mission.id, r.place) },
+                 <Menu items={[
+                     { label: "Fly", disabled: !r.newest, onSelect: () => onFly(r.mission.id) },
                      { label: "Duplicate", onSelect: () => void duplicate(r) },
                      { label: "Archive…", danger: true, onSelect: () => setArchiving(r.mission.id) },
                    ]} />
-                 </>
                )} />
       )}
       {planning ? (
-        <Dialog title="A new plan of work" onClose={() => setPlanning(false)}
+        <Dialog title="New mission" onClose={() => setPlanning(false)}
                 actions={<><Button kind="ghost" onClick={() => setPlanning(false)}>Cancel</Button>
                   <Button kind="primary" disabled={!naming.trim() || !where} onClick={plan}>Create and open</Button></>}>
           <label className="field"><span>Place</span>
             <select value={where} onChange={(e) => setWhere(e.target.value)}>
-              {held.places.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
+              {held.yourPlaces.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
             </select>
           </label>
           <label className="field"><span>Name</span>
@@ -155,7 +152,7 @@ export function Missions({ platform, held, onOpen, onFly }: {
         <Dialog title={`Archive ${archivingRow.mission.name}?`} onClose={() => setArchiving(undefined)}
                 actions={<><Button kind="ghost" onClick={() => setArchiving(undefined)}>Keep it</Button>
                   <Button kind="danger" onClick={() => void archive(archivingRow)}>Archive</Button></>}>
-          <p className="note">It leaves this list. Every run that flew it stays in the record and still says what it flew.</p>
+          <p className="note">It leaves this list. Every dive that flew it stays in the record and still says what it flew.</p>
         </Dialog>
       ) : null}
     </Page>

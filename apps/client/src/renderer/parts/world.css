@@ -1,0 +1,55 @@
+/* The world editor: layers, the world in 3D, the inspector, a status line. */
+.wed { flex: 1; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr) 28px; }
+.wed > * { min-height: 0; }
+.wed h3 { margin: 12px 0 6px; color: var(--dim); font: 600 var(--t-meta)/1.3 var(--font); }
+.wed h4 { margin: 10px 0 4px; color: var(--faint); font: 600 var(--t-meta)/1.3 var(--font); }
+
+.wed-layers { overflow-y: auto; padding: 4px 10px 12px; border-right: 1px solid var(--edge); background: var(--shelf); }
+.wed-layer { border-radius: var(--r-control); }
+.wed-layer-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px; border-radius: var(--r-control); cursor: pointer; color: var(--plain); font: 500 var(--t-body)/1 var(--font); }
+.wed-layer-row:hover { background: var(--hover); }
+.wed-layer.on > .wed-layer-row { background: var(--raised); }
+.wed-layer-row small { margin-left: auto; color: var(--faint); font: var(--t-meta)/1 var(--font); }
+.wed-layer .eye, .wed-layer .eye-gap { width: 20px; height: 20px; min-height: 0; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--dim); cursor: pointer; }
+.wed-layer .eye.off { color: var(--faint); opacity: .6; }
+.wed-layer ul { list-style: none; margin: 2px 0 6px; padding: 0 0 0 34px; }
+.wed-layer li { padding: 4px 6px; border-radius: var(--r-control); color: var(--dim); font: var(--t-meta)/1.3 var(--font); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wed-layer li:hover { background: var(--hover); color: var(--plain); }
+.wed-layer li.on { color: var(--coral); background: var(--raised); }
+.wed-layer li.add { color: var(--coral); }
+
+.wed-library-toggle { width: 100%; margin-top: 12px; }
+.wed-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.wed-tiles button { min-height: 0; height: auto; padding: 6px; border: 1px solid var(--edge); border-radius: var(--r-control); background: var(--raised); color: var(--plain); font: var(--t-meta)/1.25 var(--font); text-align: left; cursor: pointer; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.wed-tiles button:hover { border-color: var(--edge-lit); }
+.wed-tiles button.on { border-color: var(--coral); color: var(--coral); }
+.wed-tiles em { color: var(--faint); font: var(--t-meta)/1.3 var(--font); }
+
+.wed-view { position: relative; overflow: hidden; background: #0d2236; }
+.world3d { position: absolute; inset: 0; }
+.world3d canvas { display: block; }
+.wed-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); }
+.wed-hint { position: absolute; left: 12px; bottom: 12px; padding: 5px 10px; border-radius: var(--r-control); background: rgba(8, 20, 32, .72); color: #d6e4ee; font: var(--t-meta)/1.3 var(--font); pointer-events: none; }
+
+.wed-inspector { overflow-y: auto; padding: 4px 14px 14px; border-left: 1px solid var(--edge); background: var(--shelf); }
+.wed-props dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 8px 0 14px; font: var(--t-meta)/1.35 var(--font); }
+.wed-props dt { color: var(--faint); }
+.wed-props dd { margin: 0; color: var(--plain); overflow-wrap: anywhere; }
+.wed-note { margin: 0 0 10px; color: var(--dim); font: var(--t-meta)/1.4 var(--font); }
+.wed-field { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--dim); font: var(--t-meta)/1.3 var(--font); }
+.wed-field input, .wed-field select { flex: 1; min-width: 0; }
+.wed-stack { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.wed-stack li { display: grid; gap: 2px; padding: 8px; border: 1px solid var(--edge); border-radius: var(--r-control); background: var(--raised); font: var(--t-meta)/1.35 var(--font); }
+.wed-stack li span { color: var(--dim); }
+.wed-stack li em { color: var(--faint); font-style: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.wed-stack li button { justify-self: start; min-height: 0; height: 22px; padding: 0 8px; font: var(--t-meta)/1 var(--font); }
+
+.wed-status { grid-column: 1 / -1; display: flex; gap: 24px; align-items: center; padding: 0 12px; border-top: 1px solid var(--edge); background: var(--shelf); color: var(--faint); font: var(--t-meta)/1 var(--mono); }
+
+@media (max-width: 1200px) {
+  .wed { grid-template-columns: 210px minmax(0, 1fr) 250px; }
+}
+
+/* A stage's tool in the mission designer: its name, and what it asks. */
+.tool-says { display: grid; gap: 2px; text-align: left; }
+.tool-says small { color: var(--faint); font: var(--t-meta)/1.3 var(--font); }

@@ -244,7 +244,7 @@ export type Column<T> = {
 export type Facet<T> = { key: string; label: string; value: (row: T) => string | undefined };
 
 export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "Search", facets = [], actions,
-                           pageSize = 25, empty, initialSort, chosen, initialPicked, loading }: {
+                           pageSize = 25, empty, initialSort, chosen, initialPicked, loading, tally }: {
   rows: T[];
   columns: Column<T>[];
   rowKey: (row: T) => string;
@@ -263,6 +263,9 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
   initialPicked?: Record<string, string[]>;
   /** Still being read: rows of placeholders under the real column heads. */
   loading?: boolean;
+  /** What the count counts, when a row is more than one thing (a dive flown
+   *  five times is one row and five dives): the rows' total and its noun. */
+  tally?: { count: (rows: T[]) => number; noun: string };
 }): React.JSX.Element {
   const [words, setWords] = useState("");
   const [picked, setPicked] = useState<Record<string, Set<string>>>(() =>
@@ -323,7 +326,9 @@ export function Table<T>({ rows, columns, rowKey, onRow, search, searchLabel = "
           {filtering ? (
             <Button kind="ghost" onClick={() => { setWords(""); setPicked({}); }}>Clear</Button>
           ) : null}
-          <span className="dt-count">{filtering ? `${shown.length.toLocaleString()} of ${rows.length.toLocaleString()}` : rows.length.toLocaleString()}</span>
+          <span className="dt-count">{tally
+            ? `${filtering ? `${tally.count(shown).toLocaleString()} of ` : ""}${tally.count(rows).toLocaleString()} ${tally.noun}`
+            : filtering ? `${shown.length.toLocaleString()} of ${rows.length.toLocaleString()}` : rows.length.toLocaleString()}</span>
         </div>
       ) : null}
       {loading && rows.length === 0 ? (

@@ -13,6 +13,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PlacePackage } from "../platform/packages.js";
+import { paintDepths } from "./Relief.js";
 
 /** The seabed, read from the package's own heightfield. */
 export interface Ground {
@@ -144,7 +145,8 @@ export function centreOf(thing: Thing): { x: number; y: number } {
   return { x: thing.x, y: thing.y };
 }
 
-/** The seabed as an image of what is shown: pale in the shallows, deep blue off the edge. */
+/** The seabed as an image of what is shown, coloured as a nautical chart:
+ *  the one blue ramp, lit from the north-west, thin contours (Relief.ts). */
 function seabedImage(ground: Ground, side: number, view: View): HTMLCanvasElement {
   const image = document.createElement("canvas");
   const n = Math.max(1, Math.round(side));
@@ -157,21 +159,15 @@ function seabedImage(ground: Ground, side: number, view: View): HTMLCanvasElemen
   // The same ramp whatever is shown, so zooming in does not recolour the reef.
   let deepest = 0.5;
   for (const d of ground.depth) if (Number.isFinite(d) && d > deepest) deepest = d;
+  const depths = new Float32Array(n * n);
   for (let py = 0; py < n; py++) {
     for (let px = 0; px < n; px++) {
-      const deep = groundAt(ground, view.x + (px / n - 0.5) * view.acrossM, view.y + (0.5 - py / n) * view.acrossM);
-      const t = Math.min(1, Math.max(0, deep / deepest));
-      const i = (py * n + px) * 4;
-      if (deep < 0.05) {
-        pixels.data[i] = 216; pixels.data[i + 1] = 201; pixels.data[i + 2] = 168;
-      } else {
-        pixels.data[i] = Math.round(222 - 200 * t);
-        pixels.data[i + 1] = Math.round(222 - 150 * t);
-        pixels.data[i + 2] = Math.round(196 - 90 * t);
-      }
-      pixels.data[i + 3] = 255;
+      depths[py * n + px] = groundAt(ground, view.x + (px / n - 0.5) * view.acrossM, view.y + (0.5 - py / n) * view.acrossM);
     }
   }
+  // Slopes exaggerated by how flat the whole place is, not what is shown.
+  const lift = Math.min(12, Math.max(2, (ground.acrossM / deepest) * 0.08));
+  paintDepths(depths, n, n, deepest, view.acrossM / n, pixels.data, lift);
   g.putImageData(pixels, 0, 0);
   return image;
 }

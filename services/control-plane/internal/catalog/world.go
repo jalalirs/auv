@@ -93,7 +93,9 @@ func ValidateWorld(document json.RawMessage) error {
 }
 
 // WorldThings writes a world's structures as the layout the simulator reads:
-// {"version": ..., "things": [...]}. A structures item is a thing already.
+// {"version": ..., "things": [...]}. A structures item is a thing already,
+// except an object: a model from the library, laid into the package's own
+// seabed when the world is baked, and drawn from there.
 func WorldThings(versionID string, document json.RawMessage) (json.RawMessage, error) {
 	var world WorldDocument
 	if err := json.Unmarshal(document, &world); err != nil {
@@ -101,8 +103,16 @@ func WorldThings(versionID string, document json.RawMessage) (json.RawMessage, e
 	}
 	things := []json.RawMessage{}
 	for _, layer := range world.Layers {
-		if layer.Kind == "structures" {
-			things = append(things, layer.Items...)
+		if layer.Kind != "structures" {
+			continue
+		}
+		for _, raw := range layer.Items {
+			var item struct {
+				Kind string `json:"kind"`
+			}
+			if json.Unmarshal(raw, &item) == nil && item.Kind != "object" {
+				things = append(things, raw)
+			}
 		}
 	}
 	return json.Marshal(map[string]any{"version": versionID, "things": things})

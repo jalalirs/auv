@@ -282,7 +282,8 @@ button.quiet:hover:not(:disabled) { background: var(--shelf); border-color: var(
    numbers and the actions sit along the bottom, whatever the text above. */
 .cards > .card { height: 100%; }
 .card .said { padding: 12px 14px 14px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.card .said > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* One line under the name, never a paragraph: what does not fit is clipped. */
+.card .said > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .said .specs { margin-top: auto !important; padding-top: 9px; flex-wrap: wrap; row-gap: 4px; }
 .card .said .specs span { white-space: nowrap; margin-top: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .card .foot {
@@ -2184,3 +2185,57 @@ button.link:hover { text-decoration: underline; }
   color: var(--plain); font: 400 var(--t-body)/1.2 var(--font); text-align: left; cursor: pointer;
 }
 .place-choice button:hover { background: var(--raised); }
+.each-time tr.open { cursor: pointer; }
+.each-time tr.open:hover td { background: var(--raised); }
+
+/* Home */
+/* A dashboard, not a table: tiles across the top, your worlds as pictures,
+   and beside them a feed of what happened, newest first. */
+.home { display: flex; flex-direction: column; gap: var(--s5); }
+.home-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+.home-tile {
+  position: relative; display: flex; flex-direction: column; gap: var(--s1); min-width: 0;
+  padding: var(--s3) var(--s4) var(--s4); background: var(--shelf);
+  border: 1px solid var(--edge); border-radius: var(--r-surface);
+}
+.home-tile.opens { cursor: pointer; }
+.home-tile.opens:hover { border-color: var(--edge-lit); }
+.home-tile .home-label { color: var(--faint); font: 600 var(--t-meta)/1.4 var(--font); text-transform: uppercase; letter-spacing: 0.06em; }
+.home-tile strong { color: var(--plain); font: 600 var(--t-title)/1.1 var(--font); font-variant-numeric: tabular-nums; }
+.home-tile strong small { color: var(--dim); font-size: var(--t-strong); font-weight: 500; }
+.home-tile.tone-busy strong { color: var(--coral); }
+.home-tile.tone-good strong { color: var(--alive); }
+.home-said { color: var(--faint); font-size: var(--t-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-meter { position: absolute; left: var(--s4); right: var(--s4); bottom: var(--s2); height: 3px; border-radius: var(--r-round); background: var(--edge); overflow: hidden; }
+.home-meter span { display: block; height: 100%; border-radius: inherit; background: var(--coral); }
+.home-tile.tone-good .home-meter span { background: var(--alive); }
+
+.home-body { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--s5); align-items: start; }
+.home-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: var(--h-control); margin-bottom: var(--s2); }
+.home-head h2 { margin: 0; font: 600 var(--t-meta)/1.4 var(--font); color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.home-feed-list {
+  list-style: none; margin: 0; padding: var(--s1) 0; max-height: 640px; overflow-y: auto;
+  background: var(--shelf); border: 1px solid var(--edge); border-radius: var(--r-surface);
+}
+.home-event {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: var(--s3); width: 100%;
+  min-height: 0; padding: var(--s2) var(--s3); border: 0; border-radius: 0; background: transparent;
+  color: var(--plain); font: 400 var(--t-body)/1.35 var(--font); text-align: left;
+}
+.home-event:disabled { opacity: 1; cursor: default; }
+.home-event.opens { cursor: pointer; }
+.home-event.opens:hover { background: var(--raised); }
+.home-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-what b { font-weight: 600; }
+.home-event time { color: var(--dim); font-size: var(--t-meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.home-dot { width: 8px; height: 8px; border-radius: var(--r-round); background: var(--dim); }
+.home-dot.tone-good { background: var(--alive); }
+.home-dot.tone-bad { background: var(--bad); }
+.home-dot.tone-busy { background: var(--coral); }
+.home-dot.tone-warn { background: var(--vehicle); }
+
+@media (max-width: 1100px) {
+  .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-body { grid-template-columns: minmax(0, 1fr); }
+}

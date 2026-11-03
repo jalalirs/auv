@@ -3723,7 +3723,7 @@ export interface paths {
             parameters: {
                 query?: {
                     /** @description Only assets of this kind. */
-                    kind?: "reef" | "structure" | "bathymetry";
+                    kind?: "reef" | "structure" | "bathymetry" | "cover" | "species";
                 };
                 header?: never;
                 path: {
@@ -5592,6 +5592,237 @@ export interface paths {
                 header?: never;
                 path: {
                     missionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string;
+                        notes?: string;
+                        document: components["schemas"]["MissionDocument"];
+                    };
+                };
+            };
+            responses: {
+                /** @description The saved version, unpublished. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AssetVersion"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cities/{cityId}/worlds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The world of this place, one or none yet */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its worlds. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            worlds?: components["schemas"]["Mission"][];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Start the world of this place
+         * @description Empty until a version of it is saved, exactly as a layout is: a mission is a name for a series of documents.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        summary?: string;
+                        /** @default false */
+                        discoverable?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description The world. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mission"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/worlds/{worldId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One world */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    worldId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The world. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Mission"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/worlds/{worldId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive this world
+         * @description Takes it out of the listings without erasing it: a run that pinned a version of it goes on saying what it flew. Its author may archive it, or a steward of the place. Archiving what is already archived is no error.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    worldId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It is archived; the record, with when. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/worlds/{worldId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What has been saved of this world */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    worldId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Its versions, newest first. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            versions?: components["schemas"]["AssetVersion"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Save this world */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    worldId: string;
                 };
                 cookie?: never;
             };
@@ -8008,7 +8239,18 @@ export interface components {
          *      */
         AssetBrief: {
             /** @enum {string} */
-            kind: "structure" | "bathymetry";
+            kind: "structure" | "bathymetry" | "cover" | "species";
+            /**
+             * @description What a bathymetry, cover map or species list is made from; survey when absent.
+             * @enum {string}
+             */
+            origin?: "survey" | "public" | "derived";
+            /** @description What the data may be used under. */
+            licence?: string;
+            /** @description A cover map's meaning of each class value. */
+            classes?: {
+                [key: string]: string;
+            };
             /**
              * @description A structure's.
              * @enum {string}
@@ -8024,7 +8266,7 @@ export interface components {
                 /** @description The file's own name; its format is read from it when absent. */
                 name?: string;
                 /** @enum {string} */
-                format?: "geotiff" | "xyz";
+                format?: "geotiff" | "xyz" | "json";
                 /** @description Where the job finds it; filled in by the platform. */
                 path?: string;
             };
@@ -8069,7 +8311,7 @@ export interface components {
             jobId: string;
             name: string;
             /** @enum {string} */
-            kind: "reef" | "structure" | "bathymetry";
+            kind: "reef" | "structure" | "bathymetry" | "cover" | "species";
             /** @description A structure's. */
             type?: string;
             /**
@@ -8128,7 +8370,7 @@ export interface components {
             asset?: components["schemas"]["AssetBrief"];
             name: string;
             /** @enum {string} */
-            kind?: "reef" | "structure" | "bathymetry";
+            kind?: "reef" | "structure" | "bathymetry" | "cover" | "species";
             /** @enum {string} */
             madeFrom?: "video" | "survey" | "model" | "route";
             structure?: {

@@ -62,8 +62,8 @@ export function ManyRun({ platform, sweep, onBack }: {
 
   if (missing) {
     return (
-      <Page title="Not a run you have" crumb="Runs" onCrumb={onBack}>
-        <Empty title="Not a run you have">It may have been withdrawn, or you were never granted it.</Empty>
+      <Page title="Not a dive you have" crumb="Dives" onCrumb={onBack}>
+        <Empty title="Not a dive you have">It may have been withdrawn, or you were never granted it.</Empty>
       </Page>
     );
   }
@@ -75,24 +75,24 @@ export function ManyRun({ platform, sweep, onBack }: {
   const good = found?.good ?? 0;
 
   return (
-    <Page title={one?.name ?? "A run"} crumb="Runs" onCrumb={onBack}
+    <Page title={one?.name ?? "A dive"} crumb="Dives" onCrumb={onBack}
           subtitle={one === undefined ? undefined
             : `${ways} conditions${repeats > 1 ? `, each flown ${repeats} times` : ""} · ${flown} of ${runs} flown`}
           actions={one === undefined ? undefined
             : <Status tone={flying > 0 ? "busy" : "good"}>{flying > 0 ? `${flying} flying` : "done"}</Status>}>
       {found === undefined ? <SkeletonLines lines={6} /> : found.flown === 0 ? (
         <Empty title={flying > 0 ? "Nothing has come back yet" : "Nothing flown"}>
-          {flying > 0 ? "The results appear here as each condition lands." : "None of its runs flew."}
+          {flying > 0 ? "The results appear here as each condition lands." : "None of its dives flew."}
         </Empty>
       ) : (
         <>
           <RunFacts facts={[
             { label: "did the job", value: `${found.survived} of ${found.flown} conditions` },
             { label: "counts as done", value: `${(good * 100).toFixed(0)}%`,
-              note: repeats > 1 ? "a run counts as done at this score, and a condition when more than half its runs did" : "a run counts as done at this score" },
+              note: repeats > 1 ? "a dive counts as done at this score, and a condition when more than half its dives did" : "a dive counts as done at this score" },
             { label: "either way", value: found.marginal ? `${found.marginal} conditions` : "none",
-              note: "conditions where some runs did the job and some did not" },
-            { label: "energy a run", value: found.cost && !found.cost.notEnough ? `${(found.cost.energyWh ?? 0).toFixed(1)} Wh` : "—" },
+              note: "conditions where some dives did the job and some did not" },
+            { label: "energy a dive", value: found.cost && !found.cost.notEnough ? `${(found.cost.energyWh ?? 0).toFixed(1)} Wh` : "—" },
           ]} />
 
           <section className="run-section">
@@ -167,7 +167,7 @@ function Conditions({ found, good }: { found: Findings; good: number }): React.J
              })),
              { key: "score", label: "Score", width: "220px", sort: (a, b) => a.score - b.score,
                render: (r) => (
-                 <span className="score-bar" title={r.runs > 1 ? `median of ${r.runs} runs, ${pct(r.worst)} to ${pct(r.best)}` : r.says}>
+                 <span className="score-bar" title={r.runs > 1 ? `median of ${r.runs} dives, ${pct(r.worst)} to ${pct(r.best)}` : r.says}>
                    <span className="score-track">
                      <span style={{ width: pct(r.score) }} />
                      <i className="done-mark" style={{ left: pct(good) }} />
@@ -175,7 +175,7 @@ function Conditions({ found, good }: { found: Findings; good: number }): React.J
                    <b>{pct(r.score)}</b>
                  </span>
                ) },
-             { key: "runs", label: "Runs done", align: "right", priority: 2,
+             { key: "runs", label: "Dives done", align: "right", priority: 2,
                sort: (a, b) => a.survivedRuns / Math.max(1, a.runs) - b.survivedRuns / Math.max(1, b.runs),
                render: (r) => `${r.survivedRuns} of ${r.runs}` },
              { key: "outcome", label: "Outcome", sort: (a, b) => outcome(a).said.localeCompare(outcome(b).said),
@@ -213,7 +213,7 @@ function Settings({ found }: { found: Findings }): React.JSX.Element {
   return (
     <>
       <table className="numbers grouped">
-        <thead><tr><th>Setting</th><th className="num">Did the job</th><th className="num">Energy a run</th><th /></tr></thead>
+        <thead><tr><th>Setting</th><th className="num">Did the job</th><th className="num">Energy a dive</th><th /></tr></thead>
         <tbody>
           {rows.map((r) => {
             const first = r.dim !== last;
@@ -246,7 +246,7 @@ function Costs({ cost, cheapest }: { cost: Cost | undefined; cheapest: Findings[
       <table className="numbers">
         <thead><tr><th /><th className="num">Energy</th><th className="num">Time</th></tr></thead>
         <tbody>
-          <tr title={`priced on the ${cost.survived ?? 0} runs that did the job`}>
+          <tr title={`priced on the ${cost.survived ?? 0} dives that did the job`}>
             <td>The work</td><td className="num">{wh(cost.energyWh)}</td><td className="num">{min(cost.hours)}</td>
           </tr>
           <tr title="descent and both transits included">
@@ -258,9 +258,9 @@ function Costs({ cost, cheapest }: { cost: Cost | undefined; cheapest: Findings[
         </tbody>
       </table>
       <RunFacts facts={[
-        { label: "runs on a charge", value: Math.floor(cost.perCharge ?? 0),
+        { label: "dives on a charge", value: Math.floor(cost.perCharge ?? 0),
           note: `${(cost.usableWh ?? 0).toFixed(0)} usable Wh: ${(cost.capacityWh ?? 0).toFixed(0)} less a ${((cost.reserveFraction ?? 0) * 100).toFixed(0)}% reserve` },
-        { label: "runs in a working day", value: Math.floor(cost.perDay ?? 0),
+        { label: "dives in a working day", value: Math.floor(cost.perDay ?? 0),
           note: `a ${cost.workingDayHours ?? 8} hour day, held back by ${cost.heldBackBy ?? "time"}` },
         ...(cheapest?.label ? [{ label: "cheapest condition that does the job",
           value: `${cheapest.label.replaceAll(":", ": ")}, ${(cheapest.meanWh ?? 0).toFixed(1)} Wh` }] : []),

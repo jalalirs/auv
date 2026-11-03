@@ -18,13 +18,13 @@ import { readHeld, usePackages, type Held, type Packages } from "../platform/hel
 import { Autonomy } from "./Autonomy.js";
 import { Dive } from "./Dive.js";
 import { Fleet } from "./Fleet.js";
-import { PlaceDesigner } from "./PlaceDesigner.js";
-import { Designer } from "./Designer.js";
+import { World } from "./World.js";
 import { Fly } from "./Fly.js";
+import { Worlds } from "./Worlds.js";
+import { Home } from "./Home.js";
+import { Designer } from "./Designer.js";
 import { Missions } from "./Missions.js";
 import { ManyRun } from "./Run.js";
-import { PlaceDetail } from "./PlaceDetail.js";
-import { Places } from "./Places.js";
 import { Store } from "./Store.js";
 import { Profile } from "./Profile.js";
 import { Runs, repeatKey } from "./Runs.js";
@@ -42,10 +42,16 @@ export type { Held, Packages };
 
 /** Where in the application somebody is. Detail pages carry what they are of. */
 export type Where =
-  // Flying: a plan of work once or under doubts; a single task is "dive".
+  // Home: what is diving, what happened, your worlds.
+  | { page: "home" }
+  // One form for every dive: a world, its mission or none, the vehicle, who
+  // flies it, the water, how it knows where it is. "fly" rehearses a mission
+  // many times under doubts.
   | { page: "fly"; mission?: string }
-  | { page: "dive"; place?: string; layout?: string }
+  | { page: "dive"; place?: string; layout?: string; mission?: string }
+  // Your worlds, and one of them: its editor.
   | { page: "places" }
+  | { page: "world"; place: string }
   // What iOcean offers: its places and vehicles.
   | { page: "store" }
   | { page: "place"; id: string }
@@ -79,8 +85,8 @@ export type Where =
 
 type Rail = Where["page"];
 
-// The app opens on its runs: running a vehicle is what it is for.
-const HOME: Where = { page: "runs" };
+// The app opens on Home: what is diving, what happened, your worlds.
+const HOME: Where = { page: "home" };
 
 /** Every time the run's dive was flown by the same controller, newest first. */
 function timesOf(held: Held, run: string): Held["runs"] {
@@ -89,7 +95,7 @@ function timesOf(held: Held, run: string): Held["runs"] {
   return held.runs.filter((r) => !r.run.sweepId && repeatKey(r) === repeatKey(one))
     .sort((a, b) => b.run.requestedAt.localeCompare(a.run.requestedAt));
 }
-const PAGES_KNOWN = new Set<string>(["fly", "dive", "places", "store", "place", "build", "reconstructions", "reconstruction", "asset",
+const PAGES_KNOWN = new Set<string>(["home", "world", "fly", "dive", "places", "store", "place", "build", "reconstructions", "reconstruction", "asset",
   "layout", "design", "missions", "mission", "sweep", "fleet", "vehicle", "autonomy", "controller", "runs", "replay", "profile"]);
 const knownPage = (where: Address): boolean => PAGES_KNOWN.has(where.page);
 /** What scrolls on a page: its body, or the main area on a page not yet rebuilt. */
@@ -97,13 +103,13 @@ const scroller = (): HTMLElement | null =>
   document.querySelector<HTMLElement>("main .page-body") ?? document.querySelector<HTMLElement>("main");
 
 const PAGES: { key: Rail; name: string; count?: (held: Held) => number | undefined; is: (where: Where) => boolean }[] = [
-  { key: "runs", name: "Runs", count: (h) => (h.runsRead ? h.runs.length : undefined),
+  { key: "home", name: "Home", is: (w) => w.page === "home" },
+  { key: "places", name: "Worlds", count: (h) => h.yourPlaces.length,
+    is: (w) => w.page === "places" || w.page === "place" || w.page === "world" || w.page === "layout" || w.page === "design" || w.page === "build"
+      || w.page === "mission" || w.page === "missions" },
+  { key: "runs", name: "Dives", count: (h) => (h.runsRead ? h.runs.length : undefined),
     is: (w) => w.page === "runs" || w.page === "sweep" || w.page === "replay" || w.page === "fly" || w.page === "dive" },
-  { key: "missions", name: "Missions",
-    is: (w) => w.page === "missions" || w.page === "mission" },
-  { key: "places", name: "Places", count: (h) => h.yourPlaces.length,
-    is: (w) => w.page === "places" || w.page === "place" || w.page === "layout" || w.page === "design" || w.page === "build" },
-  { key: "reconstructions", name: "Objects",
+  { key: "reconstructions", name: "Library",
     is: (w) => w.page === "reconstructions" || w.page === "reconstruction" || w.page === "asset" },
   { key: "fleet", name: "Vehicles", count: (h) => h.vehicles.length, is: (w) => w.page === "fleet" || w.page === "vehicle" },
   { key: "autonomy", name: "Controllers", count: (h) => h.controllers.length, is: (w) => w.page === "autonomy" || w.page === "controller" },
@@ -234,25 +240,29 @@ export function Deck({ platform, onDiving, onSignOut }: {
       </nav>
 
       <main>
-        {where.page === "fly" ? (
+        {where.page === "home" ? (
+          <Home platform={platform} held={held} packages={packages} free={free} devices={devices}
+                onOpenWorld={(place) => setWhere({ page: "world", place })}
+                onOpenDive={(dive, run) => setWhere({ page: "replay", dive, run })}
+                onNewDive={() => setWhere({ page: "dive" })}
+                onWorlds={() => setWhere({ page: "places" })} />
+        ) : where.page === "fly" ? (
           <Fly platform={platform} held={held} packages={packages} mission={where.mission}
                onDiving={onDiving} onChanged={read}
                onSwept={(id) => setWhere({ page: "sweep", id })}
-               onSingleTask={() => setWhere({ page: "dive" }, { replace: true })}
-               onBack={() => back({ page: "runs" })}
+               onSingleTask={() => setWhere({ page: "dive", mission: where.mission }, { replace: true })}
+               onBack={() => back({ page: "dive", mission: where.mission })}
                onDesign={(id, place) => setWhere({ page: "mission", id, place })} />
         ) : where.page === "dive" ? (
-          <Dive platform={platform} held={held} packages={packages} free={free} devices={devices}
-                over={where.place} arrangedAs={where.layout}
+          <Dive key={`${where.place ?? ""}:${where.mission ?? ""}`}
+                platform={platform} held={held} packages={packages} free={free} devices={devices}
+                over={where.place} mission={where.mission}
                 onDiving={onDiving} onChanged={read} onOpen={setWhere}
-                onPlan={() => setWhere({ page: "fly" }, { replace: true })}
                 onBack={() => back({ page: "runs" })} />
         ) : where.page === "places" ? (
-          <Places platform={platform} held={held} packages={packages}
-                  onOpen={(id) => setWhere({ page: "place", id })}
-                  onBuild={() => setWhere({ page: "build" })}
-                  onStore={() => setWhere({ page: "store" })}
-                  onChanged={read} />
+          <Worlds held={held} packages={packages}
+                  onOpen={(place) => setWhere({ page: "world", place })}
+                  onNew={() => setWhere({ page: "build" })} />
         ) : where.page === "store" ? (
           <Store platform={platform} held={held} packages={packages}
                  onOpenPlace={(id) => setWhere({ page: "place", id })}
@@ -265,7 +275,7 @@ export function Deck({ platform, onDiving, onSignOut }: {
                            onOpen={(id) => setWhere({ page: "reconstruction", id })}
                            onOpenAsset={(id) => setWhere({ page: "asset", id })} />
         ) : where.page === "asset" ? (
-          <AssetDetail platform={platform} id={where.id} places={held.places} onBack={() => back({ page: "reconstructions" })}
+          <AssetDetail platform={platform} id={where.id} places={held.yourPlaces} onBack={() => back({ page: "reconstructions" })}
                        onCompose={(id) => setWhere({ page: "build", with: id })}
                        onPlace={(id, place) => setWhere({ page: "design", place, holding: id })} />
         ) : where.page === "reconstruction" ? (
@@ -275,29 +285,25 @@ export function Deck({ platform, onDiving, onSignOut }: {
         ) : where.page === "build" ? (
           <Compose platform={platform} held={held} base={where.base} chosen={where.with} onBack={() => back({ page: "places" })}
                    onOpen={(id) => { void read(); setWhere({ page: "place", id }); }}
-                   onDesign={(id) => { void read(); setWhere({ page: "design", place: id }, { replace: true }); }} />
-        ) : where.page === "place" ? (
-          <PlaceDetail held={held} packages={packages} id={where.id}
-                       platform={platform}
-                       onLayOut={(layout) => setWhere({ page: "design", place: where.id, layout })}
-                       onDesign={() => setWhere({ page: "design", place: where.id })}
-                       onBack={() => back({ page: "places" })} />
-        ) : where.page === "layout" || where.page === "design" ? (
-          <PlaceDesigner platform={platform} held={held} packages={packages}
-                         place={where.place} layout={where.layout}
-                         holding={where.page === "design" ? where.holding : undefined}
-                         onDive={(layout) => setWhere({ page: "dive", place: where.place, layout })}
-                         onChanged={read}
-                         onOpenLayout={(layout) => setWhere({ page: "design", place: where.place, layout }, { replace: true })}
-                         onBack={() => back({ page: "place", id: where.place })} />
+                   onDesign={(id) => { void read(); setWhere({ page: "world", place: id }, { replace: true }); }} />
+        ) : where.page === "place" || where.page === "world" || where.page === "layout" || where.page === "design" ? (
+          <World key={where.page === "place" ? where.id : where.place}
+                 platform={platform} held={held} packages={packages}
+                 place={where.page === "place" ? where.id : where.place}
+                 onDive={() => setWhere({ page: "dive", place: where.page === "place" ? where.id : where.place })}
+                 onMission={(id) => setWhere({ page: "mission", id, place: where.page === "place" ? where.id : where.place })}
+                 onNewMission={() => setWhere({ page: "mission", id: "new", place: where.page === "place" ? where.id : where.place })}
+                 onChanged={read}
+                 onBack={() => back({ page: "places" })} />
         ) : where.page === "missions" ? (
           <Missions platform={platform} held={held}
                     onOpen={(id, place) => setWhere({ page: "mission", id, place })}
-                    onFly={(id) => setWhere({ page: "fly", mission: id })} />
+                    onFly={(id) => setWhere({ page: "dive", mission: id })} />
         ) : where.page === "mission" ? (
-          <Designer platform={platform} held={held} packages={packages} mission={where.id} place={where.place}
-                    onBack={() => back({ page: "missions" })}
-                    onFly={(id) => setWhere({ page: "fly", mission: id })} />
+          <Designer key={where.id} platform={platform} held={held} packages={packages} mission={where.id} place={where.place}
+                    onBack={() => back({ page: "world", place: where.place })}
+                    onMade={(id) => setWhere({ page: "mission", id, place: where.place }, { replace: true })}
+                    onFly={(id) => setWhere({ page: "dive", place: where.place, mission: id })} />
         ) : where.page === "sweep" ? (
           <ManyRun platform={platform} sweep={where.id} onBack={() => back({ page: "runs" })} />
         ) : where.page === "fleet" ? (
@@ -323,7 +329,7 @@ export function Deck({ platform, onDiving, onSignOut }: {
                 by={where.by}
                 onReplay={(dive, run) => setWhere({ page: "replay", dive, run })}
                 onSweep={(id) => setWhere({ page: "sweep", id })}
-                onNew={() => setWhere({ page: "fly" })} />
+                onNew={() => setWhere({ page: "dive" })} />
         ) : where.page === "replay" ? (
           <Replay platform={platform} dive={where.dive} run={where.run}
                   one={held.runs.find((r) => r.run.id === where.run)}

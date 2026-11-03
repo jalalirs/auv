@@ -11,7 +11,8 @@ const aWorld = `{"iocean":"world/1","name":"Al Fahal","frame":{"extentM":[3000,3
  "layers":[{"id":"water","kind":"water"},
   {"id":"structures","kind":"structures","items":[
    {"id":"frame-1","kind":"nursery-frame","x":10,"y":-4},
-   {"id":"ship-1","kind":"ship","x":0,"y":0}]}],
+   {"id":"ship-1","kind":"ship","x":0,"y":0},
+   {"id":"platform-1","kind":"object","asset":"recon_1","x":5,"y":5}]}],
  "bake":{"version":"ver_1"}}`
 
 func TestAWorldIsReadAsTheThingsInItsStructures(t *testing.T) {

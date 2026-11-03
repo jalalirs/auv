@@ -475,7 +475,7 @@ export function Replay({ platform, dive, run, one, times = [], onOpenRun, onBack
   const score = one && scoreOf(one) >= 0 ? scoreOf(one) : manifest?.task?.score;
   const closing = one ? closingOf(one) : "";
   const head = (body: React.ReactNode) => (
-    <Page title={one?.name ?? "A run"} crumb="Runs" onCrumb={onBack}
+    <Page title={one?.name ?? "A dive"} crumb="Dives" onCrumb={onBack}
           subtitle={(one ? taskOf(one) : "") || manifest?.task?.name || "one condition"}>
       <RunFacts facts={[
         { label: "flown by", value: one?.flownBy || "—" },
@@ -492,13 +492,14 @@ export function Replay({ platform, dive, run, one, times = [], onOpenRun, onBack
             <thead><tr><th>Flown</th><th className="num">Score</th><th className="num">Off at the end</th><th>State</th><th /></tr></thead>
             <tbody>
               {times.map((t) => (
-                <tr key={t.run.id} className={t.run.id === run ? "here" : undefined}>
+                // Another time is shown by clicking its row; no button in the row.
+                <tr key={t.run.id} className={t.run.id === run ? "here" : "open"}
+                    onClick={t.run.id === run ? undefined : () => onOpenRun?.(t.dive, t.run.id)}>
                   <td>{ago(t.run.requestedAt)}</td>
                   <td className="num">{scoreOf(t) >= 0 ? `${(scoreOf(t) * 100).toFixed(0)}%` : "—"}</td>
                   <td className="num">{closingOf(t) || "—"}</td>
                   <td>{t.run.state === "succeeded" ? "done" : t.run.state}</td>
-                  <td>{t.run.id === run ? <span className="run-note">showing</span>
-                    : <button className="link" onClick={() => onOpenRun?.(t.dive, t.run.id)}>Show</button>}</td>
+                  <td>{t.run.id === run ? <span className="run-note">showing</span> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -514,7 +515,7 @@ export function Replay({ platform, dive, run, one, times = [], onOpenRun, onBack
   if (files.length === 0) {
     return head(
       <Empty title="Nothing to play back">
-        A run records when it is for something. A piloted run with no task leaves only what it said.
+        A dive records when it is for something. A piloted dive with no task leaves only what it said.
       </Empty>,
     );
   }

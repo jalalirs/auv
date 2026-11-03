@@ -151,7 +151,7 @@ function PutOnAMap({ platform, held, packages, rebuilt, manifest, onOpenPlace }:
   const [heading, setHeading] = useState("0");
   const [where, setWhere] = useState(rebuilt.brief.start ? `${rebuilt.brief.start.lat}, ${rebuilt.brief.start.lon}` : "");
   // Onto a place.
-  const [placeId, setPlaceId] = useState(held.places[0]?.id ?? "");
+  const [placeId, setPlaceId] = useState(held.yourPlaces[0]?.id ?? "");
   const [withinM, setWithinM] = useState("400");
   const [saidDepth, setSaidDepth] = useState("");
   const [chosen, setChosen] = useState(0);
@@ -265,7 +265,7 @@ function PutOnAMap({ platform, held, packages, rebuilt, manifest, onOpenPlace }:
               <p className="note">The reef's own ground is fitted to the place's seabed: every spot and heading tried, the ones where the ground agrees best kept, for you to choose from before anything is laid.</p>
               <label>Place
                 <select value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
-                  {held.places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {held.yourPlaces.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </label>
               <label>Search within, metres of where the video starts

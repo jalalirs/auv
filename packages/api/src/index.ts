@@ -29,6 +29,37 @@ export type Findings = Schemas["Findings"];
 export type Cost = Schemas["Cost"];
 export type Doubts = Schemas["Doubts"];
 export type LayoutDocument = Schemas["LayoutDocument"];
+
+/** A reference to one version of a library asset. */
+export interface AssetRef { asset: string; version?: number; name?: string }
+
+/** One layer of a world. Items in the structures layer are things as the
+ *  simulator reads them ({id, kind, x, y, ...}), with the asset they came from. */
+export interface WorldLayer {
+  id: string;
+  kind: "water" | "terrain" | "seabed" | "reef" | "structures" | "life";
+  visible?: boolean;
+  locked?: boolean;
+  params?: Record<string, unknown>;
+  stack?: (AssetRef & { role: "depth" | "check"; priority?: number; citation?: string; origin?: string })[];
+  result?: AssetRef;
+  classes?: Record<string, string>;
+  items?: ({ id: string; kind: string; asset?: string; name?: string } & Record<string, unknown>)[];
+  from?: AssetRef;
+}
+
+/** A world version's document. */
+export interface WorldDocument {
+  iocean: "world/1";
+  name: string;
+  frame: { units: "m"; axes: string; extentM: [number, number]; origin: "middle" };
+  georef: null | { origin: { lat: number; lon: number }; north: "true"; horizontal: "WGS84"; vertical: string; setBy?: string };
+  layers: WorldLayer[];
+  /** The package version a dive in this world runs in. */
+  bake?: { version: string; at?: string };
+  /** Where it came from, when it was made from a place. */
+  madeFrom?: Record<string, unknown>;
+}
 export type Queue = Schemas["Queue"];
 export type Device = Schemas["Device"];
 export type AutonomyStack = Schemas["AutonomyStack"];
@@ -611,6 +642,32 @@ export class Platform {
                    label = ""): Promise<AssetVersion> {
     return this.#request<AssetVersion>("POST", `/api/v1/layouts/${id}/versions`,
       { label, document });
+  }
+
+  // ── the world of a place ────────────────────────────────────────────────────
+  //
+  // One per place: a versioned document of layers, each pointing at library
+  // assets (docs/plan/world-document.md). The same calls again, with a third
+  // noun.
+
+  async worldsOf(city: string): Promise<Mission[]> {
+    const { worlds } = await this.#request<{ worlds: Mission[] }>(
+      "GET", `/api/v1/cities/${city}/worlds`);
+    return worlds;
+  }
+
+  async startWorld(city: string, said: { slug: string; name: string }): Promise<Mission> {
+    return this.#request<Mission>("POST", `/api/v1/cities/${city}/worlds`, said);
+  }
+
+  async versionsOfWorld(id: string): Promise<AssetVersion[]> {
+    const { versions } = await this.#request<{ versions: AssetVersion[] }>(
+      "GET", `/api/v1/worlds/${id}/versions`);
+    return versions;
+  }
+
+  async saveWorld(id: string, document: WorldDocument, label = ""): Promise<AssetVersion> {
+    return this.#request<AssetVersion>("POST", `/api/v1/worlds/${id}/versions`, { label, document });
   }
 
   // ── what work is planned over a place ──────────────────────────────────────

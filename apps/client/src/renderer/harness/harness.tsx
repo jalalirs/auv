@@ -47,6 +47,8 @@ const ASSETS: any[] = [
 import { Autonomy } from "../screens/Autonomy.js";
 import { ControllerDetail } from "../screens/ControllerDetail.js";
 import { AssetDetail } from "../screens/AssetDetail.js";
+import { World } from "../screens/World.js";
+import { Worlds } from "../screens/Worlds.js";
 
 const now = () => new Date().toISOString();
 let counter = 0;
@@ -77,6 +79,7 @@ const layoutThings: Record<string, Doc[]> = {
 const store = {
   missions: new Map<string, { mission: Doc; place: string; versions: Version[] }>(),
   layouts: new Map<string, { layout: Doc; place: string; versions: Version[] }>(),
+  worlds: new Map<string, { world: Doc; place: string; versions: Version[] }>(),
 };
 for (const place of places) {
   const layoutId = id("layout");
@@ -126,6 +129,20 @@ const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), SLOW));
 const said: string[] = [];
 
 const platform = {
+  worldsOf: (city: string) => delay([...store.worlds.values()].filter((w) => w.place === city).map((w) => w.world)),
+  startWorld: (city: string, asked: Doc) => {
+    const worldId = id("world");
+    store.worlds.set(worldId, { world: { id: worldId, ...asked, cityId: city, createdBy: "harness" }, place: city, versions: [] });
+    return delay(store.worlds.get(worldId)!.world);
+  },
+  versionsOfWorld: (worldId: string) => delay([...(store.worlds.get(worldId)?.versions ?? [])].reverse()),
+  saveWorld: (worldId: string, document: Doc, label = "") => {
+    const one = store.worlds.get(worldId)!;
+    const version = { id: id("version"), ordinal: one.versions.length + 1, createdAt: now(), document, label };
+    one.versions.push(version);
+    said.push(`saved world ${worldId} v${version.ordinal}: ${label}`);
+    return delay(version);
+  },
   missionsOf: (city: string) => delay([...store.missions.values()].filter((m) => m.place === city).map((m) => m.mission)),
   mission: (missionId: string) => delay(store.missions.get(missionId)!.mission),
   versionsOfMission: (missionId: string) => delay([...(store.missions.get(missionId)?.versions ?? [])].reverse()),
@@ -452,12 +469,19 @@ function Harness({ packages }: { packages: Packages }) {
     <div className="deck">
       <nav>
         <div className="here"><strong>harness</strong></div>
-        {["results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon", "run"].map((page) => (
+        {["world", "worlds", "results", "fly", "missions", "places", "video", "fleet", "controllers", "store", "designer", "sweep", "layout", "build", "recon", "run"].map((page) => (
           <a key={page} aria-current={where.page === page ? "page" : undefined} onClick={() => setWhere((w) => ({ ...w, page }))}>{page}</a>
         ))}
       </nav>
       <main>
-        {where.page === "missions" ? (
+        {where.page === "world" ? (
+          <World platform={p} held={held} packages={packages} place={where.place ?? "city_looe"}
+                 onBack={() => setWhere((w) => ({ ...w, page: "worlds" }))} onChanged={() => said.push("read again")}
+                 onDive={(v) => said.push(`dive ${v}`)} onMission={(m) => setWhere({ page: "designer", mission: m, place: where.place ?? "city_looe" })}
+                 onNewMission={() => said.push("new mission")} />
+        ) : where.page === "worlds" ? (
+          <Worlds held={held} packages={packages} onOpen={(place) => setWhere({ page: "world", place })} onNew={() => said.push("new world")} />
+        ) : where.page === "missions" ? (
           <Missions platform={p} held={held} onOpen={(mission, place) => setWhere({ page: "designer", mission, place })}
                     onFly={(mission) => setWhere((w) => ({ ...w, page: "fly", mission }))} />
         ) : where.page === "designer" ? (

@@ -72,9 +72,16 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
   }
 
   const outstanding = held.runs.filter((r) => LIVE.has(r.run.state));
+  // A sweep's dives are its one row; a dive of a sweep not listed is shown on
+  // its own, so every dive the side bar counts is somewhere on this page.
+  const listed = new Set((sweeps ?? []).map((w) => w.id));
+  const ofSweep = new Map<string, number>();
   const repeats = new Map<string, Held["runs"]>();
   for (const one of held.runs) {
-    if (one.run.sweepId) continue;
+    if (one.run.sweepId && listed.has(one.run.sweepId)) {
+      ofSweep.set(one.run.sweepId, (ofSweep.get(one.run.sweepId) ?? 0) + 1);
+      continue;
+    }
     repeats.set(repeatKey(one), [...(repeats.get(repeatKey(one)) ?? []), one]);
   }
   const rows: Row[] = [
@@ -89,18 +96,21 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
       kind: "sweep", key: w.id, name: w.name.split(" ~ ")[0]!, flownBy: "the plan's own", when: w.createdAt,
       state: w.flying ? "running" : (w.flown ?? 0) >= (w.runs ?? 0) ? "succeeded" : "queued", sweep: w })),
   ];
+  // The count is of dives, as the side bar's is, not of rows: a dive flown
+  // five times is one row here and five dives there.
+  const dives = (some: Row[]) => some.reduce((n, r) => n + (r.kind === "run" ? r.times.length : ofSweep.get(r.sweep.id) ?? 0), 0);
   const open = (r: Row) => {
     if (r.kind === "sweep") onSweep(r.sweep.id);
     else onReplay(r.one.dive, r.one.run.id);
   };
 
   return (
-    <Page title="Runs" subtitle="Every run, under one condition or many."
-          info="A run flies a mission or a task in a vehicle, under the conditions you chose. Choose one setting for each condition and it is one run; choose several and it is flown once for each, so you see which condition breaks the plan. Every run pins its place, vehicle, water, seed and simulator, so running it again means something."
-          actions={onNew ? <Button kind="primary" onClick={onNew}>New run</Button> : undefined}>
+    <Page title="Dives" subtitle="Every dive, under one condition or many."
+          info="A dive flies a mission or a task in a vehicle, under the conditions you chose. Choose one setting for each condition and it is one dive; choose several and it is flown once for each, so you see which condition breaks the plan. Every dive pins its place, vehicle, water, seed and simulator, so flying it again means something. A dive flown again by the same controller is one row, so the rows are fewer than the dives."
+          actions={onNew ? <Button kind="primary" onClick={onNew}>New dive</Button> : undefined}>
       {outstanding.length > 0 ? (
         <section className="running-now">
-          <h2>Running now</h2>
+          <h2>Diving now</h2>
           <div className="running-list">
             {outstanding.map((r) => (
               <div key={r.run.id} className="running">
@@ -118,7 +128,8 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
 
       <Table rows={rows} loading={!held.runsRead || sweeps === undefined} rowKey={(r) => r.key} initialPicked={by ? { by: [by] } : undefined}
                onRow={open}
-               search={(r) => `${r.name} ${r.flownBy} ${r.kind === "run" ? taskOf(r.one) : ""} ${r.state}`} searchLabel="Search runs"
+               search={(r) => `${r.name} ${r.flownBy} ${r.kind === "run" ? taskOf(r.one) : ""} ${r.state}`} searchLabel="Search dives"
+               tally={{ count: dives, noun: "dives" }}
                facets={[
                  { key: "conditions", label: "Conditions", value: (r) => r.kind === "sweep" ? "several" : r.times.length > 1 ? "one, flown again" : "one" },
                  { key: "by", label: "Flown by", value: (r) => r.flownBy },
@@ -126,9 +137,9 @@ export function Runs({ platform, held, onChanged, onReplay, onSweep, onNew, by }
                  { key: "when", label: "When", value: (r) => whenOf(r.when) },
                ]}
                initialSort={{ key: "when", down: true }}
-               empty={<>Nothing has been run yet. <a onClick={onNew}>Start a run</a>.</>}
+               empty={<>Nothing has been flown yet. <a onClick={onNew}>Start a dive</a>.</>}
                columns={[
-                 { key: "run", label: "Run", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
+                 { key: "run", label: "Dive", grow: true, sort: (a, b) => a.name.localeCompare(b.name),
                    render: (r) => <><span className="cell-main">{r.name}{r.kind === "run" && r.times.length > 1 ? <span className="times"> × {r.times.length}</span> : null}</span>
                                   <span className="cell-sub">{r.kind === "sweep" ? sweepSaid(r.sweep) : r.times.length > 1 ? `${r.flownBy} · flown ${r.times.length} times` : r.flownBy}</span></> },
                  { key: "score", label: "Result", align: "right", sort: (a, b) => resultOf(a) - resultOf(b),
@@ -149,7 +160,7 @@ function sweepSaid(w: Sweep): string {
   const ways = w.scenarios || Math.round(runs / Math.max(1, w.repeats ?? 1));
   const flown = w.flown ?? 0;
   return `${ways} ${ways === 1 ? "condition" : "conditions"}${(w.repeats ?? 1) > 1 ? ` × ${w.repeats}` : ""}`
-    + (flown < runs ? ` · ${flown} of ${runs} flown` : ` · ${runs} runs`);
+    + (flown < runs ? ` · ${flown} of ${runs} flown` : ` · ${runs} dives`);
 }
 
 /** What a row sorts by in the Result column. */
@@ -170,13 +181,13 @@ function ResultCell({ row }: { row: Row }): React.JSX.Element {
   if (row.kind === "sweep") {
     const runs = row.sweep.runs ?? 0;
     const flown = row.sweep.flown ?? 0;
-    return flown >= runs ? <span className="cell-meta">open to read</span> : <span className="cell-meta">{flown} of {runs}</span>;
+    return flown >= runs ? <span className="cell-meta">{runs} flown</span> : <span className="cell-meta">{flown} of {runs}</span>;
   }
   const score = averageOf(row.times);
   if (score < 0) return <span className="cell-meta">—</span>;
   const many = row.times.filter((t) => scoreOf(t) >= 0).length > 1;
   return (
-    <span className="score-bar" title={many ? `average of ${row.times.length} runs` : taskOf(row.one)}>
+    <span className="score-bar" title={many ? `average of ${row.times.length} dives` : taskOf(row.one)}>
       <span className="score-track"><span style={{ width: `${(score * 100).toFixed(0)}%` }} /></span>
       <b>{(score * 100).toFixed(0)}%</b>
     </span>
