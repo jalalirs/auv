@@ -2559,7 +2559,7 @@ paths:
           in: query
           required: false
           description: Only assets of this kind.
-          schema: { type: string, enum: [reef, structure, bathymetry] }
+          schema: { type: string, enum: [reef, structure, bathymetry, cover, species] }
       responses:
         '200':
           description: Its assets.
@@ -3739,6 +3739,150 @@ paths:
               schema: { $ref: '#/components/schemas/AssetVersion' }
         '400':
           $ref: '#/components/responses/Invalid'
+
+  /api/v1/cities/{cityId}/worlds:
+    get:
+      tags: [places]
+      summary: The world of this place, one or none yet
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its worlds.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  worlds:
+                    type: array
+                    items: { $ref: '#/components/schemas/Mission' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [places]
+      summary: Start the world of this place
+      description: >
+        Empty until a version of it is saved, exactly as a layout is: a mission
+        is a name for a series of documents.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [slug, name]
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                summary: { type: string }
+                discoverable: { type: boolean, default: false }
+      responses:
+        '201':
+          description: The world.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/worlds/{worldId}:
+    get:
+      tags: [places]
+      summary: One world
+      parameters:
+        - name: worldId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The world.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/worlds/{worldId}/archive:
+    post:
+      tags: [places]
+      summary: Archive this world
+      description: >
+        Takes it out of the listings without erasing it: a run that pinned a
+        version of it goes on saying what it flew. Its author may archive it,
+        or a steward of the place. Archiving what is already archived is no
+        error.
+      parameters:
+        - name: worldId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is archived; the record, with when.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/worlds/{worldId}/versions:
+    get:
+      tags: [places]
+      summary: What has been saved of this world
+      parameters:
+        - name: worldId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Its versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/AssetVersion' }
+    post:
+      tags: [places]
+      summary: Save this world
+      parameters:
+        - name: worldId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                label: { type: string }
+                notes: { type: string }
+                document: { $ref: '#/components/schemas/MissionDocument' }
+      responses:
+        '201':
+          description: The saved version, unpublished.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetVersion' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+
   /api/v1/cities/{cityId}/versions:
     get:
       tags: [places]
@@ -6275,7 +6419,13 @@ components:
         (type, meets, and a model with its object, or for a pipeline a
         route). A model stands; a route drapes.
       properties:
-        kind: { type: string, enum: [structure, bathymetry] }
+        kind: { type: string, enum: [structure, bathymetry, cover, species] }
+        origin: { type: string, enum: [survey, public, derived], description: "What a bathymetry, cover map or species list is made from; survey when absent." }
+        licence: { type: string, description: What the data may be used under. }
+        classes:
+          type: object
+          additionalProperties: { type: string }
+          description: A cover map's meaning of each class value.
         type: { type: string, enum: [pipeline, platform, wind-foundation, other], description: A structure's. }
         meets:
           type: string
@@ -6287,7 +6437,7 @@ components:
           description: A survey's file.
           properties:
             name: { type: string, description: The file's own name; its format is read from it when absent. }
-            format: { type: string, enum: [geotiff, xyz] }
+            format: { type: string, enum: [geotiff, xyz, json] }
             path: { type: string, description: Where the job finds it; filled in by the platform. }
         datum: { type: string, description: "A survey's vertical datum: MSL, LAT, ..." }
         errorM: { type: number, exclusiveMinimum: 0, maximum: 100, description: How wrong a survey's depths may be. }
@@ -6331,7 +6481,7 @@ components:
         orgId: { type: string }
         jobId: { type: string }
         name: { type: string }
-        kind: { type: string, enum: [reef, structure, bathymetry] }
+        kind: { type: string, enum: [reef, structure, bathymetry, cover, species] }
         type: { type: string, description: A structure's. }
         meets: { type: string, enum: [stands, drapes], description: How a structure meets the seabed. }
         madeFrom: { type: string, enum: [video, survey, model, route] }
@@ -6387,7 +6537,7 @@ components:
         brief: { $ref: '#/components/schemas/ReconstructionBrief' }
         asset: { $ref: '#/components/schemas/AssetBrief' }
         name: { type: string }
-        kind: { type: string, enum: [reef, structure, bathymetry] }
+        kind: { type: string, enum: [reef, structure, bathymetry, cover, species] }
         madeFrom: { type: string, enum: [video, survey, model, route] }
         structure:
           type: object

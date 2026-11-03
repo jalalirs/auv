@@ -28,6 +28,10 @@ const (
 	KindReef       = "reef"
 	KindStructure  = "structure"
 	KindBathymetry = "bathymetry"
+	// KindCover is a map of what covers the seabed: habitat classes per cell.
+	KindCover = "cover"
+	// KindSpecies is the list of species seen at a place, with counts.
+	KindSpecies = "species"
 )
 
 // What an asset is made from.
@@ -36,7 +40,17 @@ const (
 	FromSurvey = "survey"
 	FromModel  = "model"
 	FromRoute  = "route"
+	// FromPublic is a public dataset (GEBCO, the coral atlas, iNaturalist),
+	// cut to an area; FromDerived is made from other data by a model or a fit.
+	FromPublic  = "public"
+	FromDerived = "derived"
 )
+
+// Origins are what a survey, a cover map or a species list can be made from.
+var Origins = map[string]bool{FromSurvey: true, FromPublic: true, FromDerived: true}
+
+// fileKinds are the kinds made from one uploaded file.
+var fileKinds = map[string]bool{KindBathymetry: true, KindCover: true, KindSpecies: true}
 
 // How a structure meets the seabed: it stands on it at a placement, drapes
 // along its own route, or was rebuilt from a video with the ground it lies on
@@ -101,6 +115,12 @@ type AssetBrief struct {
 	Datum    string      `json:"datum,omitempty"`
 	ErrorM   float64     `json:"errorM,omitempty"`
 	Citation string      `json:"citation,omitempty"`
+	// Licence is what the data may be used under; Origin is survey, public or
+	// derived (a survey when not said).
+	Licence string `json:"licence,omitempty"`
+	Origin  string `json:"origin,omitempty"`
+	// A cover map: what each class value means, {"1": "sand", ...}.
+	Classes map[string]string `json:"classes,omitempty"`
 	// A structure: its model, or for a pipeline its route.
 	Model *Model `json:"model,omitempty"`
 	Route *Route `json:"route,omitempty"`
@@ -111,14 +131,17 @@ type AssetBrief struct {
 
 var (
 	surveyFormats = map[string]string{".tif": "geotiff", ".tiff": "geotiff", ".geotiff": "geotiff",
-		".xyz": "xyz", ".csv": "xyz", ".txt": "xyz"}
+		".xyz": "xyz", ".csv": "xyz", ".txt": "xyz", ".json": "json"}
 	modelFormats = map[string]string{".glb": "glb", ".gltf": "gltf", ".obj": "obj"}
 )
 
 // madeFrom is what an asset with this brief is made from.
 func (b AssetBrief) madeFrom() string {
 	switch {
-	case b.Kind == KindBathymetry:
+	case fileKinds[b.Kind]:
+		if b.Origin != "" {
+			return b.Origin
+		}
 		return FromSurvey
 	case b.Route != nil:
 		return FromRoute
@@ -131,7 +154,7 @@ func (b AssetBrief) madeFrom() string {
 // from its name, a model's scale and up axis, and how a structure meets the
 // seabed (a model stands, a route drapes).
 func (b AssetBrief) withDefaults() AssetBrief {
-	if b.Kind == KindBathymetry && b.File == nil {
+	if fileKinds[b.Kind] && b.File == nil {
 		b.File = &SourceFile{}
 	}
 	if b.File != nil {
@@ -190,6 +213,28 @@ func (b AssetBrief) Validate() error {
 		}
 		if !finite(b.ErrorM) || b.ErrorM <= 0 || b.ErrorM > 100 {
 			return fmt.Errorf("%w: a survey says how wrong its depths may be, more than 0 m and at most 100 m (errorM)", domain.ErrInvalid)
+		}
+		if b.Origin != "" && !Origins[b.Origin] {
+			return fmt.Errorf("%w: an asset's origin is survey, public or derived, not %q", domain.ErrInvalid, b.Origin)
+		}
+	case KindCover, KindSpecies:
+		if b.File == nil || b.Object == "" {
+			return fmt.Errorf("%w: a %s is a file the organisation uploaded (object, file.name)", domain.ErrInvalid, b.Kind)
+		}
+		if b.Model != nil || b.Route != nil || b.Type != "" || b.Meets != "" {
+			return fmt.Errorf("%w: a %s has a file, not a model, a route or a structure's type", domain.ErrInvalid, b.Kind)
+		}
+		if b.Kind == KindCover && (b.File.Format != "geotiff" || len(b.Classes) == 0) {
+			return fmt.Errorf("%w: a cover map is a GeoTIFF of class values with what each one means (classes)", domain.ErrInvalid)
+		}
+		if b.Kind == KindSpecies && b.File.Format != "json" {
+			return fmt.Errorf("%w: a species list is JSON: [{taxon, common, group, count}]", domain.ErrInvalid)
+		}
+		if strings.TrimSpace(b.Citation) == "" {
+			return fmt.Errorf("%w: a %s says where it came from (citation)", domain.ErrInvalid, b.Kind)
+		}
+		if b.Origin != "" && !Origins[b.Origin] {
+			return fmt.Errorf("%w: an asset's origin is survey, public or derived, not %q", domain.ErrInvalid, b.Origin)
 		}
 	case KindStructure:
 		if !StructureTypes[b.Type] {
@@ -251,7 +296,7 @@ func (b AssetBrief) Validate() error {
 		return fmt.Errorf("%w: a reef is made from a dive video, by a reconstruction; an import makes a structure or a bathymetry survey",
 			domain.ErrInvalid)
 	default:
-		return fmt.Errorf("%w: an asset is a structure or a bathymetry survey, not %q", domain.ErrInvalid, b.Kind)
+		return fmt.Errorf("%w: an asset is a structure, a bathymetry, a cover map or a species list, not %q", domain.ErrInvalid, b.Kind)
 	}
 	return nil
 }
@@ -261,7 +306,7 @@ func (b AssetBrief) Validate() error {
 func sourcePath(name, format string) string {
 	safe := safeName.ReplaceAllString(path.Base(name), "_")
 	if safe == "" || safe == "." || safe == "_" || strings.HasPrefix(safe, "..") {
-		safe = map[string]string{"geotiff": "survey.tif", "xyz": "survey.xyz", "glb": "model.glb",
+		safe = map[string]string{"geotiff": "survey.tif", "xyz": "survey.xyz", "json": "species.json", "glb": "model.glb",
 			"gltf": "model.gltf", "obj": "model.obj"}[format]
 	}
 	return "source/" + safe
@@ -283,8 +328,13 @@ func assetName(b AssetBrief) string {
 	if stem := strings.TrimSuffix(path.Base(name), path.Ext(name)); stem != "" && stem != "." {
 		return stem
 	}
-	if b.Kind == KindBathymetry {
+	switch b.Kind {
+	case KindBathymetry:
 		return "a survey"
+	case KindCover:
+		return "a cover map"
+	case KindSpecies:
+		return "a species list"
 	}
 	return "a " + b.Type
 }
@@ -392,13 +442,13 @@ func checkAsset(made Reconstruction, record map[string]any, paths map[string]boo
 	if _, ok := record["footprint"].(map[string]any); !ok {
 		return fmt.Errorf("the package's %s says nothing of the asset's footprint", AssetManifest)
 	}
-	switch made.MadeFrom {
-	case FromSurvey:
+	switch {
+	case fileKinds[made.Kind]:
 		file := surveyFileOf(record)
 		if file == "" || !paths[path.Clean(file)] {
 			return fmt.Errorf("the survey's file is %q, which the package does not hold", file)
 		}
-	case FromModel:
+	case made.MadeFrom == FromModel:
 		model, _ := record["model"].(string)
 		if model == "" {
 			model = "model.usdc"

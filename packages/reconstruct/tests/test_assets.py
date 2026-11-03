@@ -271,3 +271,39 @@ def test_a_standing_structure_carries_its_surface(tmp_path):
     stage = Usd.Stage.Open(str(tmp_path / "structure.usda"))
     bound, _ = UsdShade.MaterialBindingAPI(stage.GetPrimAtPath("/Structure/Mesh")).ComputeBoundMaterial()
     assert bound and bound.GetPath().pathString == "/Structure/Looks/Surface"
+
+
+def test_a_cover_map_is_its_classes_and_their_shares(tmp_path, monkeypatch):
+    rasterio = pytest.importorskip("rasterio")
+    pytest.importorskip("matplotlib")
+    from rasterio.transform import from_origin
+
+    source = tmp_path / "inputs" / "source"
+    source.mkdir(parents=True)
+    classes = np.ones((20, 20), dtype="uint8")
+    classes[:5] = 6
+    with rasterio.open(source / "habitat.tif", "w", driver="GTiff", width=20, height=20, count=1, dtype="uint8",
+                       crs="EPSG:4326", transform=from_origin(38.96, 22.29, 0.0001, 0.0001)) as d:
+        d.write(classes, 1)
+    made, names = run_asset(tmp_path, monkeypatch, {
+        "kind": "cover", "origin": "public", "citation": "Allen Coral Atlas", "licence": "CC BY 4.0",
+        "classes": {"1": "sediment", "6": "coral/algae"},
+        "file": {"path": "source/habitat.tif", "name": "habitat.tif", "format": "geotiff"}})
+    assert made["kind"] == "cover" and made["madeFrom"] == "public" and made["licence"] == "CC BY 4.0"
+    assert "habitat.tif" in names
+    assert made["stats"]["share"] == {"sediment": 0.75, "coral/algae": 0.25}
+
+
+def test_a_species_list_counts_what_was_seen(tmp_path, monkeypatch):
+    pytest.importorskip("matplotlib")
+    source = tmp_path / "inputs" / "source"
+    source.mkdir(parents=True)
+    (source / "seen.json").write_text(json.dumps({"centre": [22.28, 38.96], "radiusKm": 12, "species": [
+        {"taxon": "Pomacentrus sulfureus", "common": "Sulfur Damsel", "group": "Actinopterygii", "observations": 10},
+        {"taxon": "Tridacna maxima", "common": "Small Giant Clam", "group": "Mollusca", "observations": 7}]}))
+    made, names = run_asset(tmp_path, monkeypatch, {
+        "kind": "species", "origin": "public", "citation": "iNaturalist, research grade",
+        "file": {"path": "source/seen.json", "name": "seen.json", "format": "json"}})
+    assert made["kind"] == "species" and "species.json" in names
+    assert made["stats"]["taxa"] == 2 and made["stats"]["fish"] == 1 and made["stats"]["counted"] == 17
+    assert made["footprint"]["radiusKm"] == 12

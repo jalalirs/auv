@@ -35,6 +35,7 @@ const (
 	KindVehicle AssetKind = "vehicle"
 	KindLayout  AssetKind = "layout"
 	KindMission AssetKind = "mission"
+	KindWorld   AssetKind = "world"
 )
 
 // ParseAssetKind accepts the kinds the record accepts and refuses the rest.
@@ -48,6 +49,8 @@ func ParseAssetKind(value string) (AssetKind, error) {
 		return KindLayout, nil
 	case KindMission:
 		return KindMission, nil
+	case KindWorld:
+		return KindWorld, nil
 	default:
 		return "", fmt.Errorf("%w: %q is not a kind of thing this catalogue holds",
 			domain.ErrInvalid, value)
@@ -567,6 +570,7 @@ type madeOfAPlace struct {
 var (
 	layouts  = madeOfAPlace{table: "catalog.layout", kind: KindLayout, idKind: ids.KindLayout, what: "layout"}
 	missions = madeOfAPlace{table: "catalog.mission", kind: KindMission, idKind: ids.KindMission, what: "mission"}
+	worlds   = madeOfAPlace{table: "catalog.world", kind: KindWorld, idKind: ids.KindWorld, what: "world"}
 )
 
 func (m madeOfAPlace) selectFrom() string {
@@ -675,6 +679,27 @@ func (s *Store) Mission(ctx context.Context, id string) (Mission, error) {
 // MissionsOf lists the plans of work over one place.
 func (s *Store) MissionsOf(ctx context.Context, cityID string) ([]Mission, error) {
 	return missions.ofCity(ctx, s.pool, cityID)
+}
+
+// CreateWorld records the world of a place. A place has one: a second is
+// refused while the first is in use.
+func (s *Store) CreateWorld(ctx context.Context, conn db.Conn, spec MadeOfAPlaceSpec) (MadeOfAPlace, error) {
+	return worlds.create(ctx, conn, spec)
+}
+
+// World reads one world.
+func (s *Store) World(ctx context.Context, id string) (MadeOfAPlace, error) {
+	return worlds.one(ctx, s.pool, id)
+}
+
+// WorldsOf lists the world of one place: one, or none yet.
+func (s *Store) WorldsOf(ctx context.Context, cityID string) ([]MadeOfAPlace, error) {
+	return worlds.ofCity(ctx, s.pool, cityID)
+}
+
+// RetireWorld archives a world.
+func (s *Store) RetireWorld(ctx context.Context, conn db.Conn, id string) (MadeOfAPlace, error) {
+	return worlds.retire(ctx, conn, id)
 }
 
 // ── Versions ─────────────────────────────────────────────────────────────────

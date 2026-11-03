@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jalalirs/auv/services/control-plane/internal/catalog"
 	"github.com/jalalirs/auv/services/control-plane/internal/db"
 	"github.com/jalalirs/auv/services/control-plane/internal/domain"
 	"github.com/jalalirs/auv/services/control-plane/internal/exec"
@@ -728,6 +729,21 @@ func (s *Store) CreateDive(ctx context.Context, conn db.Conn, spec DiveSpec) (Di
 		var err error
 		if spec, err = composeFrom(ctx, conn, spec); err != nil {
 			return Dive{}, err
+		}
+	}
+	// A dive in a world: the world version is pinned where an arrangement
+	// was, and the place is the package it was baked into, unless the caller
+	// pinned a package of its own.
+	if spec.LayoutVersionID != "" && spec.CityVersionID == "" {
+		var kind string
+		var document []byte
+		if err := conn.QueryRow(ctx, `SELECT asset_kind::text, coalesce(document, 'null')
+			  FROM catalog.version WHERE id = $1`, spec.LayoutVersionID).Scan(&kind, &document); err == nil &&
+			kind == string(catalog.KindWorld) {
+			spec.CityVersionID = catalog.WorldBake(document)
+			if spec.CityVersionID == "" {
+				return Dive{}, fmt.Errorf("%w: that world version has not been baked into a package yet", domain.ErrInvalid)
+			}
 		}
 	}
 	if err := spec.Validate(); err != nil {
@@ -1597,6 +1613,16 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 	if layoutVersion != nil {
 		claimed.LayoutVersionID = *layoutVersion
 		claimed.Layout = layout
+		// A world's document is read by the simulator as the things in its
+		// structures layer, the shape an arrangement always had.
+		var format struct {
+			Format string `json:"iocean"`
+		}
+		if json.Unmarshal(layout, &format) == nil && format.Format == catalog.WorldFormat {
+			if claimed.Layout, err = catalog.WorldThings(*layoutVersion, layout); err != nil {
+				return Claimed{}, err
+			}
+		}
 	}
 	if stackImage != nil {
 		claimed.AutonomyImage = *stackImage

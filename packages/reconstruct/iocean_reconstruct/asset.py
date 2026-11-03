@@ -13,6 +13,13 @@ The brief (docs/plan/assets-contract.md; services/control-plane):
      "model": {"path": "source/<name>", "name", "format": "glb|gltf|obj", "scale": 1.0, "up": "y|z"}}
     {"kind": "structure", "type": "pipeline", "meets": "drapes",
      "route": {"points": [[lat, lon], ...], "diameterM": 0.5, "burial": 0.3}}
+    {"kind": "cover", "file": {"path": "source/<name>", "name", "format": "geotiff"},
+     "classes": {"1": "sand", ...}, "citation", "licence", "origin": "public|survey|derived"}
+    {"kind": "species", "file": {"path": "source/<name>", "name", "format": "json"},
+     "citation", "licence", "origin"}
+
+A bathymetry, a cover map or a species list may say its origin: a survey
+(the default), a public dataset, or derived from others by a model or a fit.
 
 Inputs: /work/inputs/source/<name>, the uploaded object (none for a route).
 Written: /work/outputs/asset.tar, holding
@@ -47,7 +54,8 @@ import numpy as np
 
 from .job import INPUTS, OUTPUTS, SCRATCH, tell
 
-KINDS = ("bathymetry", "structure")
+KINDS = ("bathymetry", "structure", "cover", "species")
+ORIGINS = ("survey", "public", "derived")
 TYPES = ("platform", "wind-foundation", "pipeline", "other")
 MEETS = ("stands", "drapes")
 # A model bigger than this is in the wrong units (millimetres, most often).
@@ -190,9 +198,141 @@ def bathymetry(brief: dict, out: pathlib.Path) -> dict:
         np.savetxt(out / name, np.column_stack([rows[:, 1], rows[:, 0], z]), fmt="%.8f %.8f %.3f")
     else:
         shutil.copy(path, out / name)
-    return {"kind": "bathymetry", "type": None, "meets": None, "madeFrom": "survey",
+    return {"kind": "bathymetry", "type": None, "meets": None, "madeFrom": origin_of(brief),
             "footprint": {"bbox": bbox}, "stats": stats, "preview": "preview.png",
-            "file": {"name": name, "format": fmt}, "warnings": warnings}
+            "file": {"name": name, "format": fmt}, "warnings": warnings,
+            **cited(brief)}
+
+
+def origin_of(brief: dict) -> str:
+    origin = brief.get("origin") or "survey"
+    if origin not in ORIGINS:
+        raise ValueError(f"an asset's origin is one of {', '.join(ORIGINS)}, not {origin!r}")
+    return origin
+
+
+def cited(brief: dict) -> dict:
+    return {k: brief[k] for k in ("citation", "licence") if brief.get(k)}
+
+
+def given_file(brief: dict) -> tuple[pathlib.Path, str]:
+    said = brief.get("file") or {}
+    path = INPUTS / said.get("path", "")
+    if not path.is_file():
+        raise ValueError(f"the file {said.get('name') or said.get('path')} was not given")
+    return path, re.sub(r"[^A-Za-z0-9._-]", "_", said.get("name") or path.name)
+
+
+# -- cover --------------------------------------------------------------------------------------------
+
+def cover(brief: dict, out: pathlib.Path) -> dict:
+    """A map of habitat classes: a GeoTIFF of class values, and what each means."""
+    path, name = given_file(brief)
+    classes = {str(k): str(v) for k, v in (brief.get("classes") or {}).items()}
+    if not classes:
+        raise ValueError("a cover map says what each class value means (classes)")
+    tell("check", f"reading {name} as a cover map")
+    bbox, grid, band = geotiff(path)
+    values = band[np.isfinite(band)].astype(int)
+    counts = {str(v): int(n) for v, n in zip(*np.unique(values, return_counts=True))}
+    total = max(sum(counts.values()), 1)
+    unknown = sorted(set(counts) - set(classes) - {"0"})
+    if unknown:
+        raise ValueError(f"the map holds class values {', '.join(unknown)} that classes does not name")
+    cell_area = grid["cellM"][0] * grid["cellM"][1]
+    share = {classes[v]: round(n / total, 4) for v, n in counts.items() if v in classes}
+    stats = dict(grid, classes=classes, share=share,
+                 areaM2={classes[v]: round(n * cell_area) for v, n in counts.items() if v in classes})
+    tell("preview", "a picture of the classes")
+    preview_cover(band, classes, out / "preview.png", bbox)
+    shutil.copy(path, out / name)
+    return {"kind": "cover", "type": None, "meets": None, "madeFrom": origin_of(brief),
+            "footprint": {"bbox": bbox}, "stats": stats, "preview": "preview.png",
+            "file": {"name": name, "format": "geotiff"}, "warnings": [], **cited(brief)}
+
+
+def preview_cover(band: np.ndarray, classes: dict, to: pathlib.Path, bbox) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
+
+    step = max(1, int(max(band.shape) // 1200))
+    shown = band[::step, ::step]
+    keys = sorted(int(k) for k in classes)
+    palette = ["#d9c9a3", "#8c6d46", "#5f9e6e", "#b0a89a", "#7f7f7f", "#e0735c", "#4a7fb5", "#c9a0dc"]
+    index = np.full(shown.shape, np.nan)
+    for i, k in enumerate(keys):
+        index[shown == k] = i
+    fig, ax = plt.subplots(figsize=(6, 6.4), dpi=120)
+    ax.imshow(index, cmap=ListedColormap([palette[i % len(palette)] for i in range(len(keys))]),
+              vmin=-0.5, vmax=len(keys) - 0.5, extent=[bbox[1], bbox[3], bbox[0], bbox[2]],
+              aspect="auto", interpolation="nearest")
+    for i, k in enumerate(keys):
+        ax.plot([], [], "s", color=palette[i % len(palette)], label=classes[str(k)])
+    ax.legend(loc="lower left", fontsize=7, framealpha=0.8)
+    ax.set_xlabel("longitude")
+    ax.set_ylabel("latitude")
+    fig.tight_layout()
+    fig.savefig(to)
+    plt.close(fig)
+
+
+# -- species ------------------------------------------------------------------------------------------
+
+def species(brief: dict, out: pathlib.Path) -> dict:
+    """The species seen at a place: [{taxon, common, group, count}], with
+    count or observations, and, where known, where they were seen."""
+    path, name = given_file(brief)
+    tell("check", f"reading {name} as a species list")
+    try:
+        read = json.loads(path.read_text())
+    except ValueError as bad:
+        raise ValueError(f"{name} is not JSON: {bad}") from None
+    rows = read.get("species") if isinstance(read, dict) else read
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"{name} lists no species: a list of {{taxon, common, group, count}}")
+    kept = []
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict) or not str(row.get("taxon") or "").strip():
+            raise ValueError(f"entry {i} of {name} names no taxon")
+        count = row.get("count", row.get("observations"))
+        if count is not None and (not isinstance(count, (int, float)) or count < 0):
+            raise ValueError(f"{row['taxon']}: a count is a number, at least 0")
+        kept.append({"taxon": row["taxon"].strip(), "common": row.get("common") or "",
+                     "group": row.get("group") or "", "count": count})
+    groups: dict[str, int] = {}
+    for row in kept:
+        groups[row["group"] or "other"] = groups.get(row["group"] or "other", 0) + 1
+    fish = sum(1 for row in kept if row["group"] in ("Actinopterygii", "Elasmobranchii", "fish"))
+    stats = {"taxa": len(kept), "fish": fish, "groups": groups,
+             "counted": sum(int(row["count"] or 0) for row in kept),
+             "countIs": read.get("countIs", "observations") if isinstance(read, dict) else "observations"}
+    footprint = {"centre": read["centre"], "radiusKm": read.get("radiusKm")} \
+        if isinstance(read, dict) and read.get("centre") else {}
+    (out / "species.json").write_text(json.dumps({"species": kept, **({"centre": read.get("centre"),
+                                       "radiusKm": read.get("radiusKm")} if footprint else {}),
+                                       "countIs": stats["countIs"]}, indent=1))
+    tell("preview", "a picture of what was seen")
+    preview_species(kept, out / "preview.png")
+    return {"kind": "species", "type": None, "meets": None, "madeFrom": origin_of(brief),
+            "footprint": footprint, "stats": stats, "preview": "preview.png",
+            "file": {"name": "species.json", "format": "json"}, "warnings": [], **cited(brief)}
+
+
+def preview_species(rows: list[dict], to: pathlib.Path) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    top = sorted(rows, key=lambda r: -(r["count"] or 0))[:15][::-1]
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=120)
+    ax.barh([r["common"] or r["taxon"] for r in top], [r["count"] or 0 for r in top], color="#2e6f9e")
+    ax.set_xlabel("count")
+    ax.tick_params(axis="y", labelsize=8)
+    fig.tight_layout()
+    fig.savefig(to)
+    plt.close(fig)
 
 
 def preview_raster(z: np.ndarray, to: pathlib.Path, bbox) -> None:
@@ -498,10 +638,14 @@ def preview_route(xy: np.ndarray, diameter: float, to: pathlib.Path) -> None:
 def made(brief: dict, out: pathlib.Path) -> dict:
     kind = brief.get("kind")
     if kind not in KINDS:
-        raise ValueError(f"an asset of kind {kind!r} is not made here: bathymetry or structure "
+        raise ValueError(f"an asset of kind {kind!r} is not made here: bathymetry, cover, species or structure "
                          "(a reef is made from a video by iocean_reconstruct.job)")
     if kind == "bathymetry":
         return bathymetry(brief, out)
+    if kind == "cover":
+        return cover(brief, out)
+    if kind == "species":
+        return species(brief, out)
     if brief.get("type") and brief["type"] not in TYPES:
         raise ValueError(f"a structure of type {brief['type']!r}: one of {', '.join(TYPES)}")
     if brief.get("meets") and brief["meets"] not in MEETS:
@@ -544,7 +688,7 @@ def main(argv: list[str]) -> int:
                 archive.add(f, arcname=str(f.relative_to(out)))
     if SCRATCH.is_relative_to(OUTPUTS) and not os.environ.get("IOCEAN_KEEP_SCRATCH"):
         shutil.rmtree(SCRATCH, ignore_errors=True)
-    kind = manifest["kind"] if manifest["kind"] == "bathymetry" else f"{manifest['type']} ({manifest['madeFrom']})"
+    kind = f"{manifest['type']} ({manifest['madeFrom']})" if manifest["kind"] == "structure" else manifest["kind"]
     tell("done", f"{kind} ready", seconds=manifest["made"]["seconds"], kind=manifest["kind"],
          footprint=manifest["footprint"], stats=manifest["stats"])
     return 0

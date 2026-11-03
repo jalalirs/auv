@@ -76,6 +76,18 @@ func (d *Dependencies) missionsAre() madeOfAPlace {
 	}
 }
 
+func (d *Dependencies) worldsAre() madeOfAPlace {
+	return madeOfAPlace{
+		kind: catalog.KindWorld, path: "worlds", id: "worldId",
+		create: func(ctx context.Context, conn db.Conn, spec catalog.MadeOfAPlaceSpec) (catalog.MadeOfAPlace, error) {
+			return d.Catalog.CreateWorld(ctx, conn, spec)
+		},
+		read:   d.Catalog.World,
+		ofCity: d.Catalog.WorldsOf,
+		retire: d.Catalog.RetireWorld,
+	}
+}
+
 // list gives what has been made of one place.
 func (d *Dependencies) list(what madeOfAPlace) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +223,12 @@ func (d *Dependencies) save(what madeOfAPlace) http.HandlerFunc {
 			writeDenied(w, r, mine)
 			return
 		}
+		if what.kind == catalog.KindWorld {
+			if err := catalog.ValidateWorld(request.Document); err != nil {
+				writeError(w, r, err)
+				return
+			}
+		}
 		subject, _ := subjectOf(r.Context())
 		var made catalog.Version
 		err = d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
@@ -290,10 +308,11 @@ func (d *Dependencies) missionCost(w http.ResponseWriter, r *http.Request) {
 // registerMadeOfAPlace declares the five routes each of them needs.
 func (rt *Router) registerMadeOfAPlace() {
 	d := rt.deps
-	for _, what := range []madeOfAPlace{d.layoutsAre(), d.missionsAre()} {
+	for _, what := range []madeOfAPlace{d.layoutsAre(), d.missionsAre(), d.worldsAre()} {
 		noun := map[catalog.AssetKind]string{
 			catalog.KindLayout:  "arrangement",
 			catalog.KindMission: "plan of work",
+			catalog.KindWorld:   "world",
 		}[what.kind]
 		rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/" + what.path,
 			Summary:  "what has been made of this place: every " + noun,
