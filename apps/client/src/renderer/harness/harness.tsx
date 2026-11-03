@@ -61,6 +61,7 @@ const places = [
   { id: "city_tank", slug: "iocean-tank-1", name: "iocean tank", fixture: "iocean-tank-1" },
   { id: "city_looe", slug: "looe-key", name: "Looe Key", fixture: "looe-key" },
   { id: "city_fahal", slug: "al-fahal", name: "Al Fahal", fixture: "al-fahal" },
+  { id: "city_jeddah", slug: "jeddah-airport-tank", name: "Jeddah airport tank", fixture: "jeddah-airport-tank" },
 ];
 
 const layoutThings: Record<string, Doc[]> = {

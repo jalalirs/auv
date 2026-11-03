@@ -207,8 +207,11 @@ export function Deck({ platform, onDiving, onSignOut }: {
   const initials = (held.you.displayName || held.you.email || "?")
     .split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 
+  // A world or a mission opens as a whole workspace; the rail comes back
+  // with the way out.
+  const full = ["place", "world", "layout", "design", "mission"].includes(where.page);
   return (
-    <div className="deck">
+    <div className={full ? "deck full" : "deck"}>
       <nav>
         <div className="here">
           <img src={mark} alt="" />

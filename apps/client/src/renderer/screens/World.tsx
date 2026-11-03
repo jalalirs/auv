@@ -19,7 +19,7 @@ import type { Asset, Mapping, Mission, Platform } from "@coral-city/api";
 import type { Held, Packages } from "./Deck.js";
 import { groundAt, groundOf, type Ground } from "../parts/SiteChart.js";
 import { drape, restOn } from "../parts/landing.js";
-import { World3D, type Shown } from "../parts/World3D.js";
+import { World3D, type Colony, type Glass, type Shown } from "../parts/World3D.js";
 import { whereIs } from "../platform/packages.js";
 import { layerOf, readWorld, saveWorld, type WorldDocument, type WorldLayer, type WorldOf } from "../platform/world.js";
 import { GROUPS, TOOLS, landed, named, spanBetween, cellBetween } from "./Layout.js";
@@ -76,21 +76,41 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
   const [route, setRoute] = useState<{ x: number; y: number }[]>([]);
   const [hover, setHover] = useState<{ x: number; y: number } | undefined>();
   const [library, setLibrary] = useState(false);
+  // The inspector floats over the world only while something is open in it.
+  const [inspecting, setInspecting] = useState(false);
   const [changed, setChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState("");
+  // The place was built again since the world was saved.
+  const [rebuilt, setRebuilt] = useState(false);
   const [trouble, setTrouble] = useState("");
   const [mapping, setMapping] = useState<Mapping | undefined>();
 
   useEffect(() => { void groundOf(pkg).then(setGround); }, [pkg]);
+  // A tank is drawn as its glass and the water in it.
+  // The colonies a place was built with, when its record lists them.
+  const colonies = useMemo(() => {
+    const listed = (pkg?.site as unknown as { reef?: { colonies_at?: Colony[] } } | undefined)?.reef?.colonies_at;
+    return Array.isArray(listed) ? listed.filter((c) => Array.isArray(c.at)) : undefined;
+  }, [pkg]);
+  const glass = useMemo(() => {
+    const site = pkg?.site as unknown as { enclosed?: boolean; interior?: Glass } | undefined;
+    return site?.enclosed && site.interior ? site.interior : undefined;
+  }, [pkg]);
   useEffect(() => {
     if (!city) return;
     let stale = false;
     void readWorld(platform, city, pkg).then((read) => {
       if (stale) return;
       setOf(read);
-      setDocument(read.document);
-      setChanged(read.version === undefined);
+      // The place built again since this world was saved: its new build is
+      // what a dive should fly, once the world is saved with it.
+      const bake = read.document.bake;
+      const newer = pkg && read.version && bake?.version !== pkg.version.id
+        && (!bake?.at || pkg.version.createdAt > String(bake.at));
+      setDocument(newer ? { ...read.document, bake: { version: pkg.version.id, at: pkg.version.createdAt } } : read.document);
+      setChanged(read.version === undefined || !!newer);
+      setRebuilt(!!newer);
     }).catch((p) => setTrouble(p instanceof Error ? p.message : "the world could not be read"));
     return () => { stale = true; };
   }, [platform, city?.id, pkg?.version.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -203,6 +223,7 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
         `${items("structures").length} structures, ${items("reef").length} reefs`);
       setOf(next);
       setChanged(false);
+      setRebuilt(false);
       setSaid(`Saved, version ${next.version?.ordinal}.`);
       if (unlaid.length > 0) await layIn();
       onChanged();
@@ -264,25 +285,39 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
 
   const depthHere = ground && hover ? groundAt(ground, hover.x, hover.y) : undefined;
   const status = mapping ? `laying objects into the seabed: ${mapping.state}` : busy ? "saving…"
-    : changed ? "not saved" : said || (of?.version ? `version ${of.version.ordinal}` : "");
+    : changed ? (rebuilt ? "new build of the place: Save to dive in it" : "not saved") : said || (of?.version ? `version ${of.version.ordinal}` : "");
   const libraryAssets = assets.filter((a) => a.kind === "reef" || a.kind === "structure");
 
   return (
     <Page fill crumb="Worlds" onCrumb={onBack} title={city.name}
           status={<Status tone={trouble ? "bad" : changed || mapping ? "busy" : "good"}>{trouble || status}</Status>}
           actions={<>
+            <Button kind={library ? "primary" : undefined} onClick={() => setLibrary(!library)}>Add</Button>
             <Button onClick={() => onDive(of?.version?.id)} disabled={changed || !of?.version}>Dive</Button>
             <Button kind="primary" disabled={busy || !!mapping || !changed} onClick={() => void save()}>Save</Button>
           </>}>
       <div className="wed">
-        <aside className="wed-layers">
+        <section className="wed-view" onDoubleClick={finishRoute}>
+          {ground && document ? (
+            <World3D ground={ground} glass={glass} colonies={colonies} items={shown} chosen={chosen} placing={!!tool}
+                     showing={{ terrain: visible("terrain"), water: visible("water"), structures: visible("structures"), reef: visible("reef") }}
+                     onPick={pick} onChoose={(id) => { setChosen(id); if (id) setLayer(items("reef").some((t) => t.id === id) ? "reef" : "structures"); }}
+                     onMove={move} onHover={setHover} />
+          ) : <div className="wed-wait">Reading the terrain…</div>}
+          <div className="wed-hint">
+            {tool ? (first ? "click the other end" : toolOf?.lands === "laid" ? "click the route, double-click to finish" : "click the seabed to put it down")
+              : chosen ? "drag it over the seabed; orbit with the mouse" : "click a thing to choose it; drag to orbit, scroll to zoom"}
+          </div>
+        </section>
+
+        <aside className="wed-panel wed-layers">
           <h3>Layers</h3>
           {ORDER.map((kind) => {
             const here = document ? layerOf(document, kind) : undefined;
             const list = kind === "structures" || kind === "reef" ? here?.items ?? [] : [];
             return (
               <div key={kind} className={`wed-layer${layer === kind ? " on" : ""}`}>
-                <div className="wed-layer-row" onClick={() => { setLayer(kind); setChosen(undefined); }}>
+                <div className="wed-layer-row" onClick={() => { setLayer(kind); setChosen(undefined); setInspecting(true); }}>
                   <button className={`eye${visible(kind) ? "" : " off"}`} title={visible(kind) ? "Hide" : "Show"}
                           onClick={(e) => { e.stopPropagation(); change(kind, (l) => ({ ...l, visible: !visible(kind) })); }}>
                     <svg viewBox="0 0 16 16" width="14" height="14"><path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z" fill="none" stroke="currentColor" strokeWidth="1.3"/>{visible(kind) ? <circle cx="8" cy="8" r="2.2" fill="currentColor"/> : <path d="M2 14 14 2" stroke="currentColor" strokeWidth="1.3"/>}</svg>
@@ -309,10 +344,12 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
               <li className="add" onClick={onNewMission}>+ New mission</li>
             </ul>
           </div>
+        </aside>
 
-          <button className="wed-library-toggle" onClick={() => setLibrary(!library)}>{library ? "Close library" : "Library"}</button>
-          {library ? (
-            <div className="wed-library">
+        {library ? (
+          <aside className="wed-panel wed-library">
+            <header><strong>Add to the world</strong>
+              <button className="wed-close" title="Close" onClick={() => { setLibrary(false); setTool(undefined); }}>×</button></header>
               {GROUPS.map((group) => (
                 <div key={group.lands}>
                   <h4>{group.title}</h4>
@@ -331,24 +368,12 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
                           onClick={() => setTool(tool === `asset:${a.id}` ? undefined : `asset:${a.id}`)}>{a.name}</button>
                 ))}
               </div>
-            </div>
-          ) : null}
-        </aside>
+          </aside>
+        ) : null}
 
-        <section className="wed-view" onDoubleClick={finishRoute}>
-          {ground && document ? (
-            <World3D ground={ground} items={shown} chosen={chosen} placing={!!tool}
-                     showing={{ terrain: visible("terrain"), water: visible("water"), structures: visible("structures"), reef: visible("reef") }}
-                     onPick={pick} onChoose={(id) => { setChosen(id); if (id) setLayer(items("reef").some((t) => t.id === id) ? "reef" : "structures"); }}
-                     onMove={move} onHover={setHover} />
-          ) : <div className="wed-wait">Reading the terrain…</div>}
-          <div className="wed-hint">
-            {tool ? (first ? "click the other end" : toolOf?.lands === "laid" ? "click the route, double-click to finish" : "click the seabed to put it down")
-              : chosen ? "drag it over the seabed; orbit with the mouse" : "click a thing to choose it; drag to orbit, scroll to zoom"}
-          </div>
-        </section>
-
-        <aside className="wed-inspector">
+        {chosenItem || inspecting ? (
+          <aside className="wed-panel wed-inspector">
+            <button className="wed-close" title="Close" onClick={() => { setChosen(undefined); setInspecting(false); }}>×</button>
           {chosenItem ? (
             <ItemInspector item={chosenItem} ground={ground} onDelete={remove}
                            onTurn={(deg) => setItems(chosenItem.kind === "reef" ? "reef" : "structures",
@@ -357,7 +382,8 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
             <LayerInspector layer={layerOf(document, layer) ?? { id: layer, kind: layer }} document={document} assets={assets}
                             onChange={(to) => change(layer, () => to)} />
           ) : null}
-        </aside>
+          </aside>
+        ) : null}
 
         <footer className="wed-status">
           <span>{hover ? `${hover.x.toFixed(0)} m E, ${hover.y.toFixed(0)} m N` : ""}</span>

@@ -7,7 +7,8 @@ King Abdulaziz International Airport, Terminal 1: a cylindrical aquarium
 fourteen metres tall and ten across, its glass thirty centimetres thick, a
 million litres of Red Sea water and some two thousand animals of sixty-five
 Red Sea species (the airport's and the press's published figures, 2023–24).
-Round a column of rock that stands up out of the water in the middle.
+Round a column of rock in the middle that rises to just under the surface:
+the water fills the cylinder to its top collar (photographs of it, 2023-26).
 
 What is **published** is the size: the cylinder, its glass, its volume. What
 is **read off footage** (two phone videos from the airport floor, 3 October
@@ -56,9 +57,12 @@ BASE_Z = -14.4            # the airport floor the tank stands on
 GRID = 401                # heightfield samples each way over the tank's square
 ACROSS = 2 * RADIUS + 0.4
 # The column: ledges stepping down from the top, (outer radius, height). Each
-# ring of the column out to its radius stands at its height; the top stands
-# out of the water.
-LEDGES = [(1.9, 0.6), (2.25, -3.0), (2.65, -6.0), (3.05, -9.5), (3.45, -12.2)]
+# ring of the column out to its radius stands at its height. Its top is under
+# the water, which fills the glass to the collar: five even tiers with the top
+# out of the water drew a wedding cake standing in a pond, where photographs
+# show a rough pinnacle, outcrop over outcrop, reaching the collar.
+LEDGES = [(1.9, -0.35), (2.25, -3.0), (2.45, -4.4), (2.65, -5.9), (2.85, -7.3), (3.05, -8.8),
+          (3.25, -10.3), (3.45, -12.2)]
 BOULDERS = [(3.9, 0.3, 0.55, 0.9), (4.1, 1.5, 0.40, 0.6), (3.8, 2.6, 0.65, 1.0), (4.2, 3.7, 0.35, 0.5),
             (3.9, 4.6, 0.50, 0.8), (4.0, 5.6, 0.45, 0.7)]          # (radius from axis, angle, r, height)
 CORAL_KINDS = [("branching", 0.55), ("massive", 0.7), ("brain", 0.5), ("plume", 0.6), ("fan", 0.9),
@@ -66,6 +70,8 @@ CORAL_KINDS = [("branching", 0.55), ("massive", 0.7), ("brain", 0.5), ("plume", 
                ("table", 0.45)]
 CORAL_COLOURS = [(0.62, 0.48, 0.38), (0.48, 0.36, 0.52), (0.70, 0.55, 0.42), (0.40, 0.52, 0.42),
                  (0.78, 0.50, 0.52), (0.55, 0.45, 0.30), (0.35, 0.40, 0.55), (0.80, 0.70, 0.45)]
+PLATE_SHARE = 0.6
+PLATE_COLOURS = [(0.36, 0.62, 0.50), (0.42, 0.66, 0.46), (0.30, 0.55, 0.52), (0.50, 0.68, 0.48)]
 # Who lives in it, from the footage: the species named in fish_species.py
 # from it, and roughly how many of each a viewer sees — the big schools of
 # seabream counted in the hundreds, the sharks and rays by the handful.
@@ -73,7 +79,7 @@ CORAL_COLOURS = [(0.62, 0.48, 0.38), (0.48, 0.36, 0.52), (0.70, 0.55, 0.42), (0.
 # with LED strips down to where the rock begins.
 ARCH_Z = -1.4
 ARCHES = 8
-PANELS_FROM, PANELS_TO = 0.5, -3.05
+PANELS_FROM, PANELS_TO = -0.35, -3.05
 STRIPS = 14
 FISH = {"rhabdosargus_haffara": 160, "abudefduf_vaigiensis": 60, "platax_teira": 24,
         "acanthopagrus_bifasciatus": 20, "plectorhinchus_gaterinus": 14, "naso_hexacanthus": 10,
@@ -84,7 +90,9 @@ FISH = {"rhabdosargus_haffara": 160, "abudefduf_vaigiensis": 60, "platax_teira":
 def edge_of(k, theta, phase):
     """How far out ledge k reaches, all round: rough, not a circle."""
     reach = LEDGES[k][0]
-    return reach * (1.0 + 0.07 * np.sin(3 * theta + phase[k, 0]) + 0.05 * np.sin(7 * theta + phase[k, 1]))
+    # Outcrops, not a turned edge: three scales of lobe at each ledge's own phase.
+    return reach * (1.0 + 0.10 * np.sin(3 * theta + phase[k, 0]) + 0.07 * np.sin(7 * theta + phase[k, 1])
+                    + 0.04 * np.sin(11 * theta + phase[k, 0] * 2.3))
 
 
 def top_of(k, x, y, theta):
@@ -315,7 +323,7 @@ def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
     spots = []
     for k in range(1, len(LEDGES)):
         inner, outer = LEDGES[k - 1][0], LEDGES[k][0]
-        for _ in range(26 if k < len(LEDGES) - 1 else 22):
+        for _ in range(30 if k < len(LEDGES) - 1 else 24):
             a = rng.uniform(0, 2 * np.pi)
             rr = rng.uniform(inner + 0.15, outer - 0.05)
             spots.append((rr * math.cos(a), rr * math.sin(a)))
@@ -324,13 +332,17 @@ def build(name: str, into: pathlib.Path, seed: int = 11) -> dict:
         rr = rng.uniform(LEDGES[-1][0] + 0.1, RADIUS - 0.6)
         spots.append((rr * math.cos(a), rr * math.sin(a)))
     for i, (x, y) in enumerate(spots):
-        kind, size = CORAL_KINDS[int(rng.integers(len(CORAL_KINDS)))]
+        # Photographs show the column mostly under plates: green tables
+        # spread from every outcrop, the other kinds among them.
+        plate = rng.random() < PLATE_SHARE
+        kind, size = ("table", 0.55) if plate else CORAL_KINDS[int(rng.integers(len(CORAL_KINDS)))]
         size *= rng.uniform(0.6, 1.2)
         p, f = coral.grow_one(kind, rng, size)
         if not len(p):
             continue
         p = p + np.array([x, y, ground_at(x, y) - 0.02])
-        tint = CORAL_COLOURS[int(rng.integers(len(CORAL_COLOURS)))]
+        tints = PLATE_COLOURS if plate else CORAL_COLOURS
+        tint = tints[int(rng.integers(len(tints)))]
         look = s.look(f"Coral{i}", tint, rough=0.6, mdl=pbr(tint, 0.55))
         s.add(f"Tank/Coral{i}", p, f, look, smooth=True)
         placed.append({"kind": kind, "sizeM": round(float(size), 3), "at": [round(x, 3), round(y, 3)],

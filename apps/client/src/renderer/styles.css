@@ -114,6 +114,8 @@ button, input, select { font: inherit; color: inherit; }
 /* ── the application proper ───────────────────────────────────────────────── */
 
 .deck { flex: 1; display: grid; grid-template-columns: var(--rail) 1fr; min-height: 0; }
+.deck.full { grid-template-columns: minmax(0, 1fr); }
+.deck.full > nav { display: none; }
 
 nav {
   display: flex; flex-direction: column; gap: 2px;

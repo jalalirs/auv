@@ -38,6 +38,14 @@ export interface Shown {
 
 export interface Showing { terrain: boolean; water: boolean; structures: boolean; reef: boolean }
 
+/** A tank's inside, as its site record says: the water is kept within glass,
+ *  round or a box. Metres, z up, z = 0 at the surface. */
+export interface Glass {
+  min: [number, number, number];
+  max: [number, number, number];
+  round?: { centre: [number, number]; radiusM: number };
+}
+
 /** One blue ramp, light in the shallows to navy in the deep, like a chart. */
 export function chartColour(depthM: number, deepestM: number): [number, number, number] {
   if (depthM <= 0) return [222, 214, 190];
@@ -121,8 +129,15 @@ const COLOURS: Record<string, number> = {
   "restoration-cell": 0x2e9e6e, object: 0x5d7fa8, reef: 0xe0735c,
 };
 
-export function World3D({ ground, items, showing, chosen, placing, onPick, onChoose, onMove, onHover }: {
+/** A coral colony as a place's record lists it: its kind, its size, where. */
+export interface Colony { kind: string; sizeM: number; at: [number, number] }
+
+export function World3D({ ground, glass, colonies, items, showing, chosen, placing, onPick, onChoose, onMove, onHover }: {
   ground: Ground;
+  /** A tank: drawn as its glass and the water in it, the ground cut to it. */
+  glass?: Glass;
+  /** The colonies a place was built with, drawn as simple shapes by kind. */
+  colonies?: Colony[];
   items: Shown[];
   showing: Showing;
   chosen?: string;
@@ -136,7 +151,8 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera;
-    controls: OrbitControls; terrain: THREE.Mesh; water: THREE.Mesh; things: THREE.Group; lift: number;
+    controls: OrbitControls; terrain: THREE.Mesh; water: THREE.Object3D; things: THREE.Group; corals: THREE.Group;
+    lift: number;
   } | undefined>(undefined);
   const said = useRef({ onPick, onChoose, onMove, onHover, chosen, placing });
   said.current = { onPick, onChoose, onMove, onHover, chosen, placing };
@@ -145,7 +161,7 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
   useEffect(() => {
     const el = host.current;
     if (!el) return;
-    const lift = liftOf(ground);
+    const lift = glass ? 1 : liftOf(ground);
     const across = ground.acrossM;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -170,8 +186,23 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(-across, across * 1.5, -across * 0.6);
     world.add(sun);
+    if (glass) {
+      // A tank stands in a hall: look at the whole of it, from a little above.
+      const tall = glass.max[2] - glass.min[2];
+      const wide = Math.max(glass.max[0] - glass.min[0], glass.max[1] - glass.min[1]);
+      const reach = Math.max(tall, wide) * 1.7;
+      world.background = new THREE.Color(0x101c28);
+      world.fog = null;
+      camera.near = reach / 500;
+      camera.far = reach * 40;
+      camera.position.set(reach * 0.55, glass.min[2] + tall * 0.85, reach * 0.95);
+      controls.target.set(0, glass.min[2] + tall * 0.45, 0);
+      controls.maxPolarAngle = Math.PI * 0.62;
+      controls.update();
+    }
 
-    const segments = Math.min(255, ground.columns - 1);
+    // A tank's column is walls: finer, or its faces zig-zag into streaks.
+    const segments = Math.min(glass ? 400 : 255, ground.columns - 1);
     const plane = new THREE.PlaneGeometry(across, across, segments, segments);
     plane.rotateX(-Math.PI / 2);
     const position = plane.attributes.position as THREE.BufferAttribute;
@@ -179,18 +210,24 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
       const x = position.getX(k), y = -position.getZ(k);
       position.setY(k, -groundAt(ground, x, y) * lift);
     }
+    if (glass) inTheTank(plane, glass);
     plane.computeVertexNormals();
-    const terrain = new THREE.Mesh(plane, new THREE.MeshStandardMaterial({ map: chartTexture(ground), roughness: 0.95 }));
+    const terrain = new THREE.Mesh(plane, glass
+      ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 })
+      : new THREE.MeshStandardMaterial({ map: chartTexture(ground), roughness: 0.95 }));
     terrain.name = "terrain";
     world.add(terrain);
 
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(across * 1.02, across * 1.02).rotateX(-Math.PI / 2),
+    const water = glass ? tank(world, glass) : new THREE.Mesh(
+      new THREE.PlaneGeometry(across * 1.02, across * 1.02).rotateX(-Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: 0x3f8fc4, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
     world.add(water);
 
     const things = new THREE.Group();
     world.add(things);
-    scene.current = { renderer, scene: world, camera, controls, terrain, water, things, lift };
+    const corals = coralsOf(colonies ?? [], ground, lift);
+    world.add(corals);
+    scene.current = { renderer, scene: world, camera, controls, terrain, water, things, corals, lift };
 
     const fit = () => {
       const w = el.clientWidth || 1, h = el.clientHeight || 1;
@@ -284,7 +321,7 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
       renderer.dispose();
       scene.current = undefined;
     };
-  }, [ground]);
+  }, [ground, glass, colonies]);
 
   // What is in it, drawn again whenever it changes.
   useEffect(() => {
@@ -292,6 +329,7 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
     if (!s) return;
     s.terrain.visible = showing.terrain;
     s.water.visible = showing.water;
+    s.corals.visible = showing.reef;
     for (const old of [...s.things.children]) {
       s.things.remove(old);
       old.traverse((o) => {
@@ -310,6 +348,135 @@ export function World3D({ ground, items, showing, chosen, placing, onPick, onCho
   }, [items, showing, chosen, ground]);
 
   return <div className="world3d" ref={host} />;
+}
+
+/** Inside the glass: the triangles outside it go, and the ground is coloured
+ *  as it is, sand on the floor and rock above it, not as a chart. */
+function inTheTank(plane: THREE.BufferGeometry, glass: Glass): void {
+  const position = plane.attributes.position as THREE.BufferAttribute;
+  const inside = (k: number) => {
+    const x = position.getX(k), y = -position.getZ(k);
+    if (glass.round) {
+      const [cx, cy] = glass.round.centre;
+      return Math.hypot(x - cx, y - cy) <= glass.round.radiusM;
+    }
+    return x >= glass.min[0] && x <= glass.max[0] && y >= glass.min[1] && y <= glass.max[1];
+  };
+  const index = plane.index!;
+  const kept: number[] = [];
+  for (let t = 0; t < index.count; t += 3) {
+    const a = index.getX(t), b = index.getX(t + 1), c = index.getX(t + 2);
+    if (inside(a) && inside(b) && inside(c)) kept.push(a, b, c);
+  }
+  plane.setIndex(kept);
+  let lowest = Infinity;
+  for (let k = 0; k < position.count; k++) lowest = Math.min(lowest, position.getY(k));
+  const colours = new Float32Array(position.count * 3);
+  const sand = new THREE.Color(0xd8ccb0), rock = new THREE.Color(0x8a877c), lichen = new THREE.Color(0x667f68);
+  const c = new THREE.Color();
+  for (let k = 0; k < position.count; k++) {
+    const up = position.getY(k) - lowest;
+    // A little grain so the rock does not read as plastic.
+    const grain = 0.88 + 0.24 * Math.abs(Math.sin(position.getX(k) * 12.9 + position.getZ(k) * 78.2) * 43758.5 % 1);
+    if (up < 0.15) c.copy(sand);
+    else c.copy(rock).lerp(lichen, Math.min(1, Math.max(0, (Math.sin(up * 1.7) + 1) * 0.3)));
+    c.multiplyScalar(grain);
+    colours.set([c.r, c.g, c.b], k * 3);
+  }
+  plane.setAttribute("color", new THREE.BufferAttribute(colours, 3));
+}
+
+/** Colonies by kind, each kind one instanced shape: plates spread flat, mounds
+ *  sit round, branches and fans stand up. Coloured as reef coral is in water. */
+const CORAL_SHAPES: Record<string, { make: () => THREE.BufferGeometry; colour: number }> = {
+  // A plate spreads well past its foot: drawn twice its listed size across.
+  table: { make: () => new THREE.CylinderGeometry(1, 0.85, 0.08, 20), colour: 0x6cc39c },
+  massive: { make: () => new THREE.SphereGeometry(0.5, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), colour: 0xb08a5a },
+  brain: { make: () => new THREE.SphereGeometry(0.5, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), colour: 0xc2a46a },
+  branching: { make: () => new THREE.ConeGeometry(0.42, 0.9, 7), colour: 0x8f74b0 },
+  finger: { make: () => new THREE.ConeGeometry(0.3, 0.8, 6), colour: 0xd08f6a },
+  plume: { make: () => new THREE.ConeGeometry(0.22, 1.1, 6), colour: 0xc8607e },
+  fan: { make: () => new THREE.BoxGeometry(0.9, 0.9, 0.06), colour: 0xd9714f },
+  sponge: { make: () => new THREE.CylinderGeometry(0.25, 0.32, 0.7, 10), colour: 0xe09a3c },
+  encrusting: { make: () => new THREE.SphereGeometry(0.5, 12, 6, 0, Math.PI * 2, 0, Math.PI / 3), colour: 0xcf7a8e },
+};
+
+function coralsOf(colonies: Colony[], ground: Ground, lift: number): THREE.Group {
+  const group = new THREE.Group();
+  const byKind = new Map<string, Colony[]>();
+  for (const c of colonies) byKind.set(c.kind, [...(byKind.get(c.kind) ?? []), c]);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  for (const [kind, list] of byKind) {
+    const shape = CORAL_SHAPES[kind] ?? CORAL_SHAPES.massive!;
+    const geometry = shape.make();
+    // Standing on its foot; a plate held a little off the rock, as tables grow.
+    geometry.computeBoundingBox();
+    geometry.translate(0, -geometry.boundingBox!.min.y + (kind === "table" ? 0.2 : 0), 0);
+    const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ color: shape.colour, roughness: 0.75 }), list.length);
+    list.forEach((c, i) => {
+      const [x, y] = c.at;
+      const turn = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
+      q.setFromAxisAngle(up, turn * Math.PI * 2);
+      const size = Math.max(0.15, c.sizeM);
+      m.compose(new THREE.Vector3(x, floor(ground, x, y, lift) - 0.02, -y), q, new THREE.Vector3(size, size, size));
+      mesh.setMatrixAt(i, m);
+    });
+    group.add(mesh);
+  }
+  return group;
+}
+
+/** A tank's glass and the water in it, and the floor of the hall it stands on. */
+function tank(world: THREE.Scene, glass: Glass): THREE.Object3D {
+  const [, , floorZ] = glass.min;
+  const top = glass.max[2] + 0.4;
+  const base = floorZ - 1;
+  const tall = top - base;
+  const water = new THREE.Group();
+  const clear = new THREE.MeshPhysicalMaterial({
+    color: 0xcfeeff, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const body = new THREE.MeshStandardMaterial({ color: 0x2f9fc4, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+  const surface = new THREE.MeshStandardMaterial({ color: 0x8fd6ea, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide });
+  const collar = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.4 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x8e979e, metalness: 0.6, roughness: 0.35 });
+  const hall = new THREE.MeshStandardMaterial({ color: 0x3a434c, roughness: 0.85 });
+  const shell = new THREE.Group();
+  if (glass.round) {
+    const r = glass.round.radiusM;
+    const [cx, cy] = glass.round.centre;
+    shell.position.set(cx, 0, -cy);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.3, r + 0.3, tall, 128, 1, true), clear);
+    wall.position.y = base + tall / 2;
+    const inside = new THREE.Mesh(new THREE.CylinderGeometry(r - 0.02, r - 0.02, glass.max[2] - floorZ, 128, 1, true), body);
+    inside.position.y = (glass.max[2] + floorZ) / 2;
+    const top_ = new THREE.Mesh(new THREE.CircleGeometry(r - 0.02, 128).rotateX(-Math.PI / 2), surface);
+    top_.position.y = glass.max[2];
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.55, r + 0.55, 1.2, 128, 1, true), collar);
+    cap.position.y = top + 0.6;
+    const plinth = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.45, r + 0.55, 1, 128), steel);
+    plinth.position.y = base + 0.5;
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(r + 1.1, 0.04, 8, 160).rotateX(Math.PI / 2), steel);
+    rail.position.y = floorZ - 1 + 1.05;
+    shell.add(wall, inside, top_, cap, plinth, rail);
+  } else {
+    const [x0, y0] = glass.min, [x1, y1] = glass.max;
+    const w = x1 - x0, d = y1 - y0;
+    const box = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, tall, d + 0.04), clear);
+    box.position.set((x0 + x1) / 2, base + tall / 2, -(y0 + y1) / 2);
+    const inside = new THREE.Mesh(new THREE.BoxGeometry(w, glass.max[2] - floorZ, d), body);
+    inside.position.set((x0 + x1) / 2, (glass.max[2] + floorZ) / 2, -(y0 + y1) / 2);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color: 0xbfd4e0 }));
+    edges.position.copy(box.position);
+    shell.add(box, inside, edges);
+  }
+  water.add(shell);
+  const reach = Math.max(glass.max[0] - glass.min[0], glass.max[1] - glass.min[1]) * 1.6;
+  const floor_ = new THREE.Mesh(new THREE.CircleGeometry(reach, 96).rotateX(-Math.PI / 2), hall);
+  floor_.position.y = base - 0.01;
+  world.add(floor_);
+  return water;
 }
 
 /** The ground's height in the scene at a world point. */
