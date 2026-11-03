@@ -121,3 +121,15 @@ def test_the_asset_tools_are_offered():
         assert name in server.TOOLS
     assert "survey" in server.TOOLS["places_build"][1]["properties"]
     assert "placement" in server.TOOLS["mappings_create"][1]["properties"]
+
+
+def test_a_cover_map_carries_its_classes_and_where_it_came_from():
+    platform = Assets()
+    tools.assets_create(platform, "cover", object="obj_c", name="habitat.tif", citation="Allen Coral Atlas",
+                        classes={1: "sand", 3: "seagrass"}, origin="public", licence="CC BY 4.0")
+    assert platform.sent[-1][2] == {"kind": "cover", "file": {"format": "geotiff", "name": "habitat.tif"},
+                                    "object": "obj_c", "citation": "Allen Coral Atlas",
+                                    "classes": {"1": "sand", "3": "seagrass"}, "origin": "public",
+                                    "licence": "CC BY 4.0"}
+    tools.assets_create(platform, "species", object="obj_l", citation="RSG reef survey 2025")
+    assert platform.sent[-1][2]["file"] == {"format": "json"}

@@ -203,10 +203,10 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         "A reef comes from reconstructions_create.",
         {"type": "object",
          "properties": {
-             "kind": {"type": "string", "enum": ["structure", "bathymetry"]},
+             "kind": {"type": "string", "enum": ["structure", "bathymetry", "cover", "species"]},
              "object": {"type": "string", "description": "the uploaded file's object id (uploads_confirm); not for a route"},
              "name": {"type": "string", "description": "the file's own name; its format is read from it"},
-             "format": {"type": "string", "enum": ["geotiff", "xyz", "glb", "gltf", "obj"]},
+             "format": {"type": "string", "enum": ["geotiff", "xyz", "json", "glb", "gltf", "obj"]},
              "type": {"type": "string", "enum": ["pipeline", "platform", "wind-foundation", "other"]},
              "meets": {"type": "string", "enum": ["stands", "drapes"],
                        "description": "default: a model stands, a route drapes"},
@@ -220,12 +220,17 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
              "diameter_m": {"type": "number", "description": "a route's pipe diameter"},
              "burial": {"type": "number", "description": "the share of a route's pipe diameter under the seabed, 0 to 1"},
              "label": {"type": "string", "description": "what to call it; the file's name when absent"},
-             "org": {"type": "string", "description": "the organisation; this session's own when absent"}},
+             "org": {"type": "string", "description": "the organisation; this session's own when absent"},
+             "origin": {"type": "string", "enum": ["survey", "public", "derived"],
+                        "description": "measured by you, public data, or worked out from other data"},
+             "licence": {"type": "string", "description": "what the data may be used under"},
+             "classes": {"type": "object", "description": "a cover map's class values and what each means"}},
          "required": ["kind"]},
         lambda p, kind, object="", name="", format="", type="", meets="", datum="", error_m=None, citation="",
-               scale=None, up="", route=None, diameter_m=None, burial=None, label="", org="":
+               scale=None, up="", route=None, diameter_m=None, burial=None, label="", org="", origin="",
+               licence="", classes=None:
             tools.assets_create(p, kind, object, name, format, type, meets, datum, error_m, citation, scale, up,
-                                route, diameter_m, burial, label, org)),
+                                route, diameter_m, burial, label, org, origin, licence, classes)),
     "assets_status": (
         "How an asset is going, and when it is ready: its kind, type, how it meets the seabed, what it "
         "was made from, its footprint and stats.",
@@ -356,6 +361,20 @@ TOOLS: dict[str, tuple[str, dict, Callable[..., Any]]] = {
         "The autonomy deployed to this institution.",
         {"type": "object", "properties": {}},
         tools.controllers_list),
+    "worlds_get": (
+        "A place's world: its newest document of layers (water, terrain, seabed, reef, structures, "
+        "life), each pointing at library assets, and the package it was baked into.",
+        {"type": "object", "properties": {"place": {"type": "string", "description": "id or slug"}},
+         "required": ["place"]},
+        lambda p, place: tools.worlds_get(p, place)),
+    "worlds_save": (
+        "Save a new version of a place's world, a world/1 document; the place's world is made "
+        "first when it has none. A dive in it flies the version saved.",
+        {"type": "object",
+         "properties": {"place": {"type": "string"}, "document": {"type": "object"},
+                        "label": {"type": "string"}},
+         "required": ["place", "document"]},
+        lambda p, place, document, label="": tools.worlds_save(p, place, document, label)),
     "layouts_list": (
         "Every arrangement of a place: where transponders, moorings, plots and "
         "lines have been laid out on it.",

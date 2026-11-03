@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Write a place's reference folder as files the import job takes, so each
+foundation of its world becomes a library asset with its citation and licence.
+
+    tools/world-foundations <reference folder> <out folder>
+
+Run where rasterio is, e.g. in iocean/reconstruct-video on the box. Reads the
+folder Al Fahal was built from (docs/plan/world-audit.md) and writes:
+
+    learned-depth.tif   the learned depth, metres below MSL (derived)
+    stumpf-fitted.tif   Sentinel-2 Stumpf ratio fitted to ICESat-2 (derived)
+    icesat.xyz          ICESat-2 seafloor photons, lat,lon,depth (public)
+    habitat.tif         the Allen Coral Atlas benthic map in habitat codes (public)
+    species.json        iNaturalist observations near the reef (public)
+    foundations.json    the brief of each, for assets_create
+
+Every grid there has its first row at the south edge; a GeoTIFF's first row
+is the north edge, so each is flipped.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import pathlib
+import sys
+
+import numpy as np
+
+
+def metres_per_degree(lat: float) -> tuple[float, float]:
+    r = math.radians(lat)
+    north = 111_132.92 - 559.82 * math.cos(2 * r) + 1.175 * math.cos(4 * r)
+    east = 111_412.84 * math.cos(r) - 93.5 * math.cos(3 * r)
+    return east, north
+
+
+def write_tif(to: pathlib.Path, south_up: np.ndarray, centre: tuple[float, float], across: float,
+              nodata: float | None) -> None:
+    import rasterio
+    from rasterio.transform import from_bounds
+    east, north = metres_per_degree(centre[0])
+    half_lon, half_lat = across / 2 / east, across / 2 / north
+    band = np.flipud(south_up)
+    rows, cols = band.shape
+    with rasterio.open(to, "w", driver="GTiff", height=rows, width=cols, count=1, dtype=band.dtype,
+                       crs="EPSG:4326", nodata=nodata, compress="deflate",
+                       transform=from_bounds(centre[1] - half_lon, centre[0] - half_lat,
+                                             centre[1] + half_lon, centre[0] + half_lat, cols, rows)) as d:
+        d.write(band, 1)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3:
+        print(__doc__)
+        return 2
+    ref, out = pathlib.Path(argv[1]), pathlib.Path(argv[2])
+    out.mkdir(parents=True, exist_ok=True)
+    reference = json.loads((ref / "reference.json").read_text())
+    centre = (reference["centre"]["latitude"], reference["centre"]["longitude"])
+    briefs = []
+
+    learned = sorted(ref.glob("learned_depth_*.npz"))
+    if learned:
+        z = np.load(learned[-1])
+        depth = np.where(np.isfinite(z["depth"]), z["depth"], np.nan).astype("float32")
+        write_tif(out / "learned-depth.tif", depth, centre, 3000.0, float("nan"))
+        run = learned[-1].stem.removeprefix("learned_depth_")
+        sigma = float(np.nanmedian(z["sigma"]))
+        briefs.append({"file": "learned-depth.tif", "kind": "bathymetry", "format": "geotiff",
+                       "label": f"{reference['name']} learned depth", "datum": "MSL",
+                       "error_m": round(max(sigma, 0.79), 2), "origin": "derived",
+                       "licence": "Copernicus Sentinel data, free and open",
+                       "citation": f"learned depth model {run} on Copernicus Sentinel-2, fitted to ICESat-2 ATL24"})
+
+    fitted = ref / "seabed_fitted.json"
+    if fitted.exists():
+        meta = json.loads(fitted.read_text())
+        grid = np.fromfile(ref / meta["file"], "<f4").reshape(meta["rows"], meta["columns"])
+        # Written as heights, z up; an asset's depths are positive down.
+        write_tif(out / "stumpf-fitted.tif", (-grid).astype("float32"), centre, meta["acrossMetres"], float("nan"))
+        briefs.append({"file": "stumpf-fitted.tif", "kind": "bathymetry", "format": "geotiff",
+                       "label": f"{reference['name']} Sentinel-2 Stumpf, fitted", "datum": "MSL",
+                       "error_m": meta["fittedAgainst"]["rmsAfterM"], "origin": "derived",
+                       "licence": "Copernicus Sentinel data, free and open",
+                       "citation": f"{meta['source']}, Stumpf log-ratio fitted to ICESat-2 ATL24"})
+
+    icesat = ref / "icesat.json"
+    if icesat.exists():
+        meta = json.loads(icesat.read_text())
+        rows = np.load(ref / meta["file"])
+        east, north = metres_per_degree(centre[0])
+        lat = centre[0] + rows[:, 1] / north
+        lon = centre[1] + rows[:, 0] / east
+        with open(out / "icesat.xyz", "w") as f:
+            for a, o, h in zip(lat, lon, rows[:, 2]):
+                f.write(f"{a:.7f},{o:.7f},{-h:.3f}\n")
+        briefs.append({"file": "icesat.xyz", "kind": "bathymetry", "format": "xyz",
+                       "label": f"{reference['name']} ICESat-2 seafloor photons", "datum": "MSL",
+                       "error_m": meta["medianUncertaintyM"], "origin": "public", "licence": meta["licence"],
+                       "citation": meta["source"]})
+
+    atlas = ref / "coral-atlas.json"
+    if atlas.exists():
+        meta = json.loads(atlas.read_text())
+        habitat = np.load(ref / meta["habitat"]).astype("uint8")
+        write_tif(out / "habitat.tif", habitat, centre, meta["acrossMetres"], 0)
+        briefs.append({"file": "habitat.tif", "kind": "cover", "format": "geotiff",
+                       "label": f"{reference['name']} habitat, Allen Coral Atlas",
+                       "classes": {"1": "sediment", "3": "seagrass", "4": "rubble", "5": "pavement",
+                                   "6": "coral/algae"},
+                       "origin": "public", "licence": meta["licence"],
+                       "citation": f"{meta['source']} ({meta['via']})"})
+
+    seen = reference.get("sources", {}).get("observations")
+    if seen:
+        rows = json.loads((ref / seen["file"]).read_text())
+        (out / "species.json").write_text(json.dumps(
+            [{"taxon": r["taxon"], "common": r.get("common", ""), "group": r.get("group", ""),
+              "count": r.get("observations", r.get("count", 0))} for r in rows], indent=1))
+        briefs.append({"file": "species.json", "kind": "species", "format": "json",
+                       "label": f"{reference['name']} species, iNaturalist",
+                       "origin": "public", "licence": seen["licence"],
+                       "citation": f"{seen['source']}, research-grade observations within "
+                                   f"{seen['radiusKm']:g} km, fetched {reference['fetched']}"})
+
+    (out / "foundations.json").write_text(json.dumps(briefs, indent=1))
+    for b in briefs:
+        print(b["file"], (out / b["file"]).stat().st_size)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

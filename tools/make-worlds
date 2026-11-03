@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Give the six places their worlds (docs/plan/world-audit.md), through MCP.
+
+    tools/make-worlds            # import what is missing, save each world's first version
+    tools/make-worlds --look     # say what each world would be, save nothing
+
+Al Fahal's foundations become library assets first: the files
+tools/world-foundations wrote on the box (learned depth, the fitted Stumpf
+grid, ICESat-2 photons, the Atlas habitat, the species list), each uploaded
+and imported with its citation and licence. The Jeddah tank's species, read
+off its footage (tools/make-jeddah-tank), becomes a species asset too.
+
+Each world is the one worlds_get writes from the place, with those assets
+put in its layers. A place whose world is saved already is left alone; an
+asset already in the library under the same label is used again.
+"""
+
+from __future__ import annotations
+
+import importlib.machinery
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+HERE = pathlib.Path(__file__).resolve().parent
+upload = importlib.machinery.SourceFileLoader("mcp_upload", str(HERE / "mcp-upload")).load_module()
+tool = upload.tool
+
+BOX = "jalalirs@100.76.65.1"
+FOUNDATIONS = "iocean/scratch/worlds/al-fahal"
+
+AL_FAHAL = "city_01M5VHA276DB6QMQ174B4B9XVB"
+TANK = "city_01M4106850Y74RGD3A5BSQ44GX"
+PLACES = [AL_FAHAL, TANK,
+          "city_01M60Z55CB6JJV87ZKXGKHA4DW",   # SubPipe outfall pipeline
+          "city_01M2DM5ACX3PXXH0ERQ9BJN08C",   # Thuwal Deep
+          "city_01M5VJ84TZWC30M4ZGX11J0TZ6",   # Thuwal export line
+          "city_01M4MN3MPJF84NP5H9GAQZM0BD"]   # Thuwal reef calibrated
+
+# The tank's stocking as tools/make-jeddah-tank has it, by taxon.
+TANK_FISH = {"rhabdosargus_haffara": 160, "abudefduf_vaigiensis": 60, "platax_teira": 24,
+             "acanthopagrus_bifasciatus": 20, "plectorhinchus_gaterinus": 14, "naso_hexacanthus": 10,
+             "carcharhinus_melanopterus": 6, "chaetodon_auriga": 6, "pomacanthus_maculosus": 4,
+             "aetobatus_ocellatus": 3, "epinephelus_lanceolatus": 2}
+SHARKS_AND_RAYS = {"carcharhinus_melanopterus", "aetobatus_ocellatus"}
+
+
+def library() -> dict[str, dict]:
+    """The organisation's assets by label, newest first wins."""
+    out: dict[str, dict] = {}
+    for kind in ("bathymetry", "cover", "species"):
+        for one in tool("assets_list", {"kind": kind}).get("assets") or []:
+            out.setdefault(one.get("name") or "", one)
+    return out
+
+
+def uploaded(path: str, on_box: bool) -> str:
+    args = [sys.executable, str(HERE / "mcp-upload")] + (["--ssh", BOX] if on_box else []) + [path]
+    said = json.loads(subprocess.check_output(args))
+    return said.get("object") or said["id"]
+
+
+def imported(brief: dict, path: str, on_box: bool, held: dict[str, dict]) -> str:
+    """An asset's id: the one with this label, or a new import of the file."""
+    have = held.get(brief["label"])
+    if have and have.get("state") not in ("failed", "archived"):
+        print(f"  have {brief['label']}: {have['asset']}")
+        return have["asset"]
+    asked = {k: v for k, v in brief.items() if k != "file"}
+    asked.update(object=uploaded(path, on_box), name=pathlib.Path(path).name)
+    made = tool("assets_create", asked)
+    print(f"  importing {brief['label']}: {made['asset']}")
+    return made["asset"]
+
+
+def ready(ids: list[str]) -> None:
+    waiting = set(ids)
+    for _ in range(120):
+        for one in list(waiting):
+            state = tool("assets_status", {"asset": one})
+            if state.get("state") == "ready":
+                waiting.discard(one)
+            elif state.get("state") == "failed":
+                raise SystemExit(f"{one} failed: {state.get('failure')}")
+        if not waiting:
+            return
+        time.sleep(10)
+    raise SystemExit(f"still importing after 20 minutes: {sorted(waiting)}")
+
+
+def layer(document: dict, kind: str) -> dict:
+    return next(l for l in document["layers"] if l["kind"] == kind)
+
+
+def al_fahal(document: dict, assets: dict[str, str], briefs: list[dict]) -> None:
+    by_file = {b["file"]: b for b in briefs}
+
+    def ref(file: str, role: str, priority: int) -> dict:
+        b = by_file[file]
+        return {"asset": assets[file], "name": b["label"], "role": role, "priority": priority,
+                "citation": b["citation"], "licence": b["licence"], "origin": b["origin"]}
+    terrain = layer(document, "terrain")
+    terrain["stack"] = [ref("learned-depth.tif", "depth", 0), ref("stumpf-fitted.tif", "depth", 1),
+                        ref("icesat.xyz", "check", 2)]
+    seabed = layer(document, "seabed")
+    seabed["cover"] = ref("habitat.tif", "cover", 0)
+    seabed["classes"] = by_file["habitat.tif"]["classes"]
+    # The video reef was archived on 2026-11-02: the world does not lean on it.
+    reef = layer(document, "reef")
+    reef["items"] = [i for i in reef.get("items") or [] if i.get("asset") != "recon_01M5HCXB4WB4WAKM11F7T8TAFX"]
+    life = layer(document, "life")
+    life["species"] = ref("species.json", "species", 0)
+
+
+def main(argv: list[str]) -> int:
+    look = "--look" in argv
+    held = {} if look else library()
+    assets: dict[str, str] = {}
+    briefs = json.loads(subprocess.check_output(["ssh", BOX, f"cat ~/{FOUNDATIONS}/foundations.json"]))
+    if not look:
+        print("Al Fahal's foundations")
+        for b in briefs:
+            assets[b["file"]] = imported(b, f"/home/jalalirs/{FOUNDATIONS}/{b['file']}", True, held)
+        print("the tank's species")
+        rows = [{"taxon": t.replace("_", " ").capitalize(), "common": "",
+                 "group": "Elasmobranchii" if t in SHARKS_AND_RAYS else "Actinopterygii", "count": n}
+                for t, n in TANK_FISH.items()]
+        local = pathlib.Path(subprocess.check_output(["mktemp", "-d"]).decode().strip()) / "jeddah-tank-species.json"
+        local.write_text(json.dumps(rows, indent=1))
+        tank_species = imported({"kind": "species", "format": "json", "label": "Jeddah tank species, from footage",
+                                 "origin": "derived", "licence": "iOcean",
+                                 "citation": "read off two visitor videos of the Jeddah airport aquarium; "
+                                             "counts are what a viewer sees, not a census"},
+                                str(local), False, held)
+        ready(list(assets.values()) + [tank_species])
+
+    for place in PLACES:
+        got = tool("worlds_get", {"place": place})
+        if got.get("world"):
+            print(f"{got['place']}: world {got['world']} v{got.get('ordinal')} saved already")
+            continue
+        document = got["document"]
+        if place == AL_FAHAL and not look:
+            al_fahal(document, assets, briefs)
+        if place == TANK and not look:
+            life = layer(document, "life")
+            life["species"] = {"asset": tank_species, "name": "Jeddah tank species, from footage",
+                               "role": "species", "priority": 0}
+        line = ", ".join(f"{l['kind']} {len(l.get('items') or l.get('stack') or [])}" for l in document["layers"])
+        where = "no place on Earth" if document.get("georef") is None else "georeferenced"
+        if look:
+            print(f"{got['place']}: {where}; {line}")
+            continue
+        saved = tool("worlds_save", {"place": place, "document": document,
+                                     "label": "made from the place and its foundations"})
+        print(f"{saved['place']}: world {saved['world']} v{saved['ordinal']}; {where}; {line}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

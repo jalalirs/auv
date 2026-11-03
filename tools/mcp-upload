@@ -48,7 +48,8 @@ def main() -> int:
     suffix = pathlib.Path(path).suffix.lower()
     kind = {".mp4": "video/mp4", ".mov": "video/quicktime", ".mkv": "video/x-matroska",
             ".tif": "image/tiff", ".tiff": "image/tiff", ".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
-            ".obj": "model/obj"}.get(suffix, "text/plain" if suffix in (".xyz", ".csv", ".txt") else "application/octet-stream")
+            ".obj": "model/obj"}.get(suffix, "text/plain" if suffix in (".xyz", ".csv", ".txt")
+                          else "application/json" if suffix == ".json" else "application/octet-stream")
     grant = tool("uploads_start", {"size_bytes": size, "sha256": sha, "media_type": kind})
     if "grant" not in grant:
         print(json.dumps(grant, indent=1)); return 1

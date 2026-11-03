@@ -507,6 +507,112 @@ def _layout_document(platform: Platform, layout_id: str) -> tuple[dict, dict]:
     return layout, document
 
 
+def _place(platform: Platform, place: str) -> dict:
+    found = next((p for p in platform.places()
+                  if p["id"] == place or p.get("slug") == place), None)
+    if found is None:
+        raise Refused(404, "not_found", f"no place {place!r} is granted to you")
+    return found
+
+
+def _world_from_place(platform: Platform, place: dict) -> dict:
+    """The world a place's newest package and arrangement describe, as the app
+    writes it for a place made before worlds (apps/client platform/world.ts)."""
+    version = _newest(platform.versions_of_place(place["id"]), published=True)
+    site = (_site_of(platform, place) or {}) if version else {}
+    extent = place.get("extent") or {}
+    if any(extent.get(k) for k in ("west", "south", "east", "north")):
+        centre = {"latitude": (extent["north"] + extent["south"]) / 2,
+                  "longitude": (extent["east"] + extent["west"]) / 2}
+    else:
+        centre = (site.get("from") or {}).get("centre")
+    across = (site.get("from") or {}).get("acrossMetres") or 1000
+    virtual = bool(site.get("enclosed")) or "subpipe" in (place.get("slug") or "").lower()
+    things, objects = [], []
+    newest = None
+    for layout in platform.layouts_of(place["id"]):
+        versions = platform.request("GET", f"/api/v1/layouts/{layout['id']}/versions")["versions"]
+        one = _newest(versions)
+        if one and (newest is None or one["createdAt"] > newest["createdAt"]):
+            newest = one
+    if newest:
+        things = [dict(t) for t in (newest.get("document") or {}).get("things") or []]
+        objects = list((newest.get("document") or {}).get("objects") or [])
+    water = site.get("water") or {}
+    sources = ((site.get("perCell") or {}).get("sources")) or []
+    reef = site.get("reef") or {}
+    life = site.get("life") or {}
+    return {
+        "iocean": "world/1", "name": place.get("name"),
+        "frame": {"units": "m", "axes": "x east, y north, z up; z = 0 is the sea surface",
+                  "extentM": [across, across], "origin": "middle"},
+        "georef": None if virtual or not centre else {
+            "origin": {"lat": centre["latitude"], "lon": centre["longitude"]}, "north": "true",
+            "horizontal": "WGS84", "vertical": "MSL", "setBy": "terrain"},
+        "layers": [
+            {"id": "water", "kind": "water", "params": {
+                "waterType": f"Jerlov {water['type']}" if water.get("type") else "Jerlov IB",
+                "visibilityM": 12, "temperatureC": 28, "salinityPsu": 40, "from": water.get("from") or "chosen"}},
+            {"id": "terrain", "kind": "terrain",
+             "stack": [{"asset": "", "name": s.get("source"), "role": "check" if s.get("kind") == "measured" else "depth",
+                        "priority": i, "citation": s.get("citation"), "origin": s.get("kind")}
+                       for i, s in enumerate(sources)],
+             **({"result": {"asset": place["id"], "version": version.get("ordinal"),
+                            "name": f"{place.get('name')} as built"}} if version else {})},
+            {"id": "seabed", "kind": "seabed", "classes": {"1": "sand", "5": "rock", "3": "seagrass"}},
+            {"id": "reef", "kind": "reef",
+             "params": {"colonies": reef.get("colonies") or 0, "from": (reef.get("cover") or {}).get("from") or ""},
+             "items": [{"id": f"reef-{i + 1}", "kind": "reef", "name": r.get("name"), "laid": True,
+                        "asset": r.get("reconstructionId") or (r.get("video") or {}).get("reconstructionId") or ""}
+                       for i, r in enumerate(site.get("reconstructions") or [])]
+                      + [{**o, "kind": "reef", "asset": o.get("assetId")} for o in objects if o.get("meets") == "reef"]},
+            {"id": "structures", "kind": "structures",
+             "items": things
+                      + [{"id": f"structure-{i + 1}", "kind": "object", "name": st.get("name"), "laid": True,
+                          "meets": "drapes" if st.get("type") == "pipeline" else "stands",
+                          "asset": (st.get("asset") or "").removeprefix("asset/"), "x": 0, "y": 0,
+                          **({"route": [{"x": x, "y": y} for x, y in st["route"]["local"]]}
+                             if (st.get("route") or {}).get("local") else {})}
+                         for i, st in enumerate(site.get("structures") or [])]
+                      + [{**o, "kind": "object", "asset": o.get("assetId")} for o in objects if o.get("meets") != "reef"]},
+            {"id": "life", "kind": "life",
+             "params": {"count": life["count"], "from": life.get("from") or ""} if life.get("count") else {}},
+        ],
+        **({"bake": {"version": version["id"], "at": version.get("createdAt")}} if version else {}),
+        "madeFrom": {"place": place["id"], **({"version": version["id"]} if version else {})},
+    }
+
+
+def worlds_get(platform: Platform, place: str) -> dict:
+    """A place's world: its newest saved document of layers. A place with none
+    yet is given the one its package and newest arrangement describe, unsaved."""
+    found = _place(platform, place)
+    worlds = platform.request("GET", f"/api/v1/cities/{found['id']}/worlds")["worlds"]
+    if not worlds:
+        return {"place": found.get("name"), "world": None, "document": _world_from_place(platform, found),
+                "note": "not saved yet: written from the place; worlds_save keeps it as the first version"}
+    world = worlds[0]
+    versions = platform.request("GET", f"/api/v1/worlds/{world['id']}/versions")["versions"]
+    newest = _newest(versions)
+    return {"place": found.get("name"), "world": world["id"],
+            "version": (newest or {}).get("id"), "ordinal": (newest or {}).get("ordinal"),
+            "document": (newest or {}).get("document")}
+
+
+def worlds_save(platform: Platform, place: str, document: dict, label: str = "") -> dict:
+    """Save a version of a place's world (world/1), making the world first when it has none."""
+    found = _place(platform, place)
+    if not isinstance(document, dict) or document.get("iocean") != "world/1":
+        raise Refused(400, "invalid", 'a world document says "iocean": "world/1"')
+    worlds = platform.request("GET", f"/api/v1/cities/{found['id']}/worlds")["worlds"]
+    world = worlds[0] if worlds else platform.request(
+        "POST", f"/api/v1/cities/{found['id']}/worlds", {"slug": "world", "name": found.get("name") or "world"})
+    saved = platform.request("POST", f"/api/v1/worlds/{world['id']}/versions",
+                             {"label": label, "document": document})
+    return {"place": found.get("name"), "world": world["id"], "version": saved.get("id"),
+            "ordinal": saved.get("ordinal")}
+
+
 def layouts_list(platform: Platform, place: str) -> dict:
     """Every arrangement of a place."""
     found = next((p for p in platform.places()
@@ -1332,10 +1438,21 @@ def assets_create(platform: Platform, kind: str, object: str = "", name: str = "
                   type: str = "", meets: str = "", datum: str = "", error_m: float | None = None,
                   citation: str = "", scale: float | None = None, up: str = "", route: list | None = None,
                   diameter_m: float | None = None, burial: float | None = None, label: str = "",
-                  org: str = "") -> dict:
-    """Make a structure or a seabed survey into an asset, from an uploaded file or a pipeline's route."""
+                  org: str = "", origin: str = "", licence: str = "", classes: dict | None = None) -> dict:
+    """Make a structure, a seabed survey, a cover map or a species list into an asset, from an uploaded
+    file or a pipeline's route."""
     brief: dict[str, Any] = {"kind": kind}
-    if kind == "bathymetry":
+    if kind in ("cover", "species"):
+        if not object or not citation:
+            raise Refused(400, "invalid", f"a {kind} is an uploaded file (object) with its citation")
+        if kind == "cover" and not classes:
+            raise Refused(400, "invalid", "a cover map is a GeoTIFF of class values with what each means (classes)")
+        brief["file"] = {"format": format or ("geotiff" if kind == "cover" else "json"),
+                         **({"name": name} if name else {})}
+        brief.update({"object": object, "citation": citation})
+        if classes:
+            brief["classes"] = {str(k): str(v) for k, v in classes.items()}
+    elif kind == "bathymetry":
         if not object or not datum or error_m is None:
             raise Refused(400, "invalid", "a survey is an uploaded file (object) with its datum and error_m")
         brief["file"] = {k: v for k, v in (("name", name), ("format", format)) if v}
@@ -1368,10 +1485,14 @@ def assets_create(platform: Platform, kind: str, object: str = "", name: str = "
         if meets:
             brief["meets"] = meets
     else:
-        raise Refused(400, "invalid", "assets_create makes a structure or a bathymetry survey; a reef comes from "
-                                      "reconstructions_create")
+        raise Refused(400, "invalid", "assets_create makes a structure, a bathymetry survey, a cover map or a "
+                                      "species list; a reef comes from reconstructions_create")
     if label:
         brief["label"] = label
+    if origin:
+        brief["origin"] = origin
+    if licence:
+        brief["licence"] = licence
     made = platform.request("POST", f"/api/v1/organisations/{_organisation(platform, org)}/assets", brief)
     return {**_asset_summary(made),
             "note": "assets_status says how it is going; an import takes minutes on processors"}
