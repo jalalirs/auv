@@ -64,6 +64,27 @@
         "--strictPort"
       ],
       "port": 5179
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "apps/site/node_modules/.bin/vite",
+      "runtimeArgs": ["apps/site", "--config", "apps/site/vite.config.js", "--port", "4180", "--strictPort"],
+      "port": 4180
+    },
+    {
+      "name": "itraffic-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/jalalirs/code/itraffic/client",
+        "run",
+        "web",
+        "--",
+        "--port",
+        "5191",
+        "--strictPort"
+      ],
+      "port": 5191
     }
   ]
 }

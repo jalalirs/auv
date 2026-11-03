@@ -76,7 +76,10 @@ def main(paths: list[str]) -> int:
         print(f"{path}: {len(got)} people")
         for one in got:
             kept = people.setdefault(one["name"].lower(), {**one, "matched": ""})
-            if found:
+            # A search page also carries a few dozen people it shows whatever
+            # was searched for; a match is the word in their title or company.
+            word = found.group(1).replace("-", " ").lower() if found else ""
+            if found and word in f"{one['title']} {one['organisation']}".lower():
                 words = set(filter(None, kept["matched"].split(";"))) | {found.group(1)}
                 kept["matched"] = ";".join(sorted(words))
     INTO.mkdir(parents=True, exist_ok=True)

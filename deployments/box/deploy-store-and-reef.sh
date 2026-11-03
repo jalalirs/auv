@@ -4,9 +4,9 @@
 # migration. Rebuilds the control plane and the agent; MCP is unchanged.
 #
 # From the Mac, the commit exported to the box:
-#   git archive 7e5c434 | ssh jalalirs@100.76.65.1 'mkdir -p ~/iocean/scratch/deploy-7e5c434 && tar -x -C ~/iocean/scratch/deploy-7e5c434'
+#   git archive 3c227e7 | ssh jalalirs@100.76.65.1 'mkdir -p ~/iocean/scratch/deploy-3c227e7 && tar -x -C ~/iocean/scratch/deploy-3c227e7'
 # Then on the box:
-#   bash ~/iocean/scratch/deploy-7e5c434/deployments/box/deploy-store-and-reef.sh 7e5c434
+#   bash ~/iocean/scratch/deploy-3c227e7/deployments/box/deploy-store-and-reef.sh 3c227e7
 # Running dives are adopted by the new agent. The runtime only reads
 # brief.colonies from sim-runtime r8; r7 ignores the key.
 #

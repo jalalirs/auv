@@ -76,6 +76,12 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@26.4.0)
 
+  apps/site:
+    devDependencies:
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@26.4.0)
+
   packages/api:
     devDependencies:
       openapi-typescript:
