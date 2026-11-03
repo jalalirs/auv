@@ -82,7 +82,10 @@ export function AssetDetail({ platform, id, places, onBack, onCompose, onPlace }
                 ? <Button kind="primary" onClick={() => onCompose(one.id)}>Build a place on it</Button>
                 : <Button kind="primary" onClick={() => setPlacing(true)}>Place it</Button>
               : null}
-            <Menu label={`More for ${name}`} items={[{ label: "Archive", danger: true, onSelect: () => {
+            <Menu label={`More for ${name}`} items={[...(one.state === "ready" ? [{
+              label: one.inStore ? "Take it out of the store" : "Put it in the store",
+              onSelect: () => { void platform.offerAsset(one.id, !one.inStore).then(setOne, (e: unknown) => setTrouble(e instanceof Error ? e.message : "it could not be done")); },
+            }] : []), { label: "Archive", danger: true, onSelect: () => {
               void platform.archiveAsset(one.id).then(onBack, (e: unknown) => setTrouble(e instanceof Error ? e.message : "it could not be archived"));
             } }]} />
           </>}>

@@ -2627,6 +2627,51 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/assets/{assetId}/store:
+    put:
+      tags: [places]
+      summary: Offer this asset in the store
+      description: >
+        A finished asset of any kind, offered for any organisation to copy into
+        its own objects. The same authority as making one.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          description: The asset.
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is in the store; the asset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [places]
+      summary: Take this asset out of the store
+      description: Copies already made stay with whoever made them.
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          description: The asset.
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is out of the store; the asset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/reconstructions/{reconstructionId}:
     get:
       tags: [places]
@@ -6526,6 +6571,7 @@ components:
         said: { type: string, description: The end of what its job printed, when it failed. }
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
+        inStore: { type: boolean, description: Offered in the store for anybody to copy. }
 
     ReconstructionRecord:
       type: object

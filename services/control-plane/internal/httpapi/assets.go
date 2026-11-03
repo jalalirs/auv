@@ -105,6 +105,35 @@ func (d *Dependencies) archiveAsset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, view)
 }
 
+// offerAsset puts an asset in the store, or takes it out, and says what it
+// is now.
+func (d *Dependencies) offerAsset(on bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		principal, _ := principalOf(r.Context())
+		id := r.PathValue("assetId")
+		err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+			if err := d.Reconstructor.Offer(r.Context(), id, on); err != nil {
+				return err
+			}
+			return d.Audit.Record(r.Context(), conn, audit.Event{
+				ActorID: principal.ID, Action: string(policy.CityFound),
+				SubjectKind: "asset", SubjectID: id, Outcome: audit.Succeeded,
+				Detail: map[string]any{"inStore": on},
+			})
+		})
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		view, err := d.Reconstructor.WatchAsset(r.Context(), id)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, view)
+	}
+}
+
 func (d *Dependencies) watchAsset(w http.ResponseWriter, r *http.Request) {
 	view, err := d.Reconstructor.WatchAsset(r.Context(), r.PathValue("assetId"))
 	if err != nil {

@@ -752,6 +752,11 @@ export class Platform {
     return this.#request<Asset>("POST", `/api/v1/assets/${id}/archive`);
   }
 
+  /** Offered in the store for any organisation to copy, or taken out of it. */
+  async offerAsset(id: string, on: boolean): Promise<Asset> {
+    return this.#request<Asset>(on ? "PUT" : "DELETE", `/api/v1/assets/${id}/store`);
+  }
+
   async archiveLayout(id: string): Promise<Layout> {
     return this.#request<Layout>("POST", `/api/v1/layouts/${id}/archive`);
   }

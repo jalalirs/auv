@@ -293,6 +293,9 @@ type Reconstruction struct {
 	CreatedBy  string         `json:"createdBy"`
 	CreatedAt  time.Time      `json:"createdAt"`
 	RecordedAt *time.Time     `json:"recordedAt,omitempty"`
+	// InStore says the organisation offers it in the store, for anybody to
+	// copy into their own.
+	InStore bool `json:"inStore,omitempty"`
 }
 
 // Start asks for a reef to be reconstructed from a video the organisation
@@ -383,7 +386,7 @@ func (r *Reconstructor) Start(ctx context.Context, principalID, orgID string, br
 
 const selectReconstruction = `
 	SELECT id, org_id, job_id, brief, name, manifest, coalesce(failure, ''),
-	       created_by, created_at, recorded_at, kind, made_from, structure
+	       created_by, created_at, recorded_at, kind, made_from, structure, in_store
 	FROM catalog.reconstruction`
 
 func scanReconstruction(row interface{ Scan(...any) error }) (Reconstruction, error) {
@@ -391,7 +394,7 @@ func scanReconstruction(row interface{ Scan(...any) error }) (Reconstruction, er
 	var brief, manifest, structure []byte
 	if err := row.Scan(&made.ID, &made.OrgID, &made.JobID, &brief, &made.Name, &manifest,
 		&made.Failure, &made.CreatedBy, &made.CreatedAt, &made.RecordedAt,
-		&made.Kind, &made.MadeFrom, &structure); err != nil {
+		&made.Kind, &made.MadeFrom, &structure, &made.InStore); err != nil {
 		return Reconstruction{}, db.Translate(err)
 	}
 	if made.MadeFrom == FromVideo {
@@ -449,6 +452,24 @@ func (r *Reconstructor) Archive(ctx context.Context, principalID, id string) err
 	if tag.RowsAffected() == 0 {
 		_, err := r.OrgOf(ctx, id)
 		return err
+	}
+	return nil
+}
+
+// Offer puts a finished object in the store, or takes it out. What was
+// copied from it stays with whoever copied it.
+func (r *Reconstructor) Offer(ctx context.Context, id string, on bool) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE catalog.reconstruction SET in_store = $2
+		WHERE id = $1 AND archived_at IS NULL AND (NOT $2 OR manifest IS NOT NULL)`, id, on)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		if _, err := r.OrgOf(ctx, id); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: only a finished object can be offered in the store", domain.ErrInvalid)
 	}
 	return nil
 }

@@ -509,6 +509,7 @@ type AssetView struct {
 	Said      string         `json:"said,omitempty"`
 	CreatedBy string         `json:"createdBy"`
 	CreatedAt time.Time      `json:"createdAt"`
+	InStore   bool           `json:"inStore,omitempty"`
 }
 
 // asAsset turns a reconstruction as somebody watching it sees it into an
@@ -518,7 +519,7 @@ func asAsset(view View) AssetView {
 	out := AssetView{ID: made.ID, OrgID: made.OrgID, JobID: made.JobID, Name: made.Name, Kind: made.Kind,
 		MadeFrom: made.MadeFrom, State: view.State, JobState: view.JobState, Manifest: made.Manifest,
 		Steps: view.Steps, Failure: view.Failure, Said: view.Said, CreatedBy: made.CreatedBy,
-		CreatedAt: made.CreatedAt}
+		CreatedAt: made.CreatedAt, InStore: made.InStore}
 	if made.Structure != nil {
 		out.Type, out.Meets = made.Structure.Type, made.Structure.Meets
 	}

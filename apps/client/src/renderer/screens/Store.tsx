@@ -38,6 +38,9 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
   const [kind, setKind] = useState<Kind>("all");
   const [store, setStore] = useState<StorePlace[] | undefined>();
   const [objects, setObjects] = useState<Asset[] | undefined>();
+  // Your own finished objects: those not in the store yet are offered here to
+  // put in it, so the store holds everything you have.
+  const [ours, setOurs] = useState<Asset[]>([]);
   // What was just copied, so its card can say where it went.
   const [copied, setCopied] = useState<Record<string, string>>({});
   const [pictures, setPictures] = useState<Record<string, string>>({});
@@ -52,7 +55,8 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
     if (!platform) return;
     setStore(await platform.storePlaces().catch(() => []));
     setObjects(await platform.storeObjects().catch(() => []));
-  }, [platform]);
+    if (held.institution) setOurs(await platform.listAssets(held.institution.id).catch(() => []));
+  }, [platform, held.institution]);
   useEffect(() => { void readStore(); }, [readStore]);
   useEffect(() => {
     if (!platform) return;
@@ -83,12 +87,19 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
     const made = await platform!.copyStorePlace(institution!.id, one.id);
     setCopied((was) => ({ ...was, [one.id]: made.id }));
   });
+  const offer = (one: Asset, on: boolean) => busy(one.id, async () => { await platform!.offerAsset(one.id, on); });
+  const offerAll = (list: Asset[]) => busy("all", async () => {
+    for (const one of list) await platform!.offerAsset(one.id, true);
+  });
   const letGo = (one: StorePlace) => busy(one.id, () => platform!.unadoptStorePlace(institution!.id, one.id));
   const copyObject = (one: Asset) => busy(one.id, async () => {
     const made = await platform!.copyStoreObject(institution!.id, one.id);
     setCopied((was) => ({ ...was, [one.id]: made.id }));
   });
 
+  const offered = new Set((objects ?? []).map((o) => o.id));
+  const notYet = ours.filter((o) => o.state === "ready" && !offered.has(o.id));
+  const yours = (one: Asset) => institution !== undefined && one.orgId === institution.id;
   const published = new Set(held.vehicles.map((v) => v.slug));
   const vehicles = CATALOGUE.filter((v) => !published.has(v.slug));
   const showPlaces = kind === "all" || kind === "places";
@@ -96,12 +107,12 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
   const showVehicles = kind === "all" || kind === "vehicles";
 
   return (
-    <Page title="Store" subtitle="Places, objects and vehicles from iOcean. Copy one and it is yours."
+    <Page title="Store" subtitle="Places, objects and vehicles on iOcean, yours among them. Copy one and it is yours."
           info="iOcean builds places from public data and checks them before publishing them here. Copying a place makes a place of your own to change; the store's never changes, and you can copy it as many times as you like."
           toolbar={<Segmented label="Kind" value={kind} onChange={setKind}
                               options={[{ key: "all", label: "Everything" },
                                         { key: "places", label: "Places", count: store?.length },
-                                        { key: "objects", label: "Objects", count: objects?.length },
+                                        { key: "objects", label: "Objects", count: objects ? objects.length + notYet.length : undefined },
                                         { key: "vehicles", label: "Vehicles", count: vehicles.length }]} />}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
       {showPlaces ? (
@@ -127,7 +138,7 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
       {showObjects ? (
         <section className="store-kind">
           {kind === "all" ? <h2>Objects</h2> : null}
-          {objects === undefined ? <SkeletonCards count={3} /> : objects.length === 0 ? (
+          {objects === undefined ? <SkeletonCards count={3} /> : objects.length + notYet.length === 0 ? (
             <Empty title="No objects in the store yet">Reefs, structures and models iOcean offers will appear here.</Empty>
           ) : (
             <div className="cards">
@@ -136,12 +147,35 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
                 return (
                   <Card key={one.id} name={name} detail={source ? `${kindSaid(one)} · ${source}` : kindSaid(one)}
                         picture={one.preview || undefined} art={<ObjectArt kind={artOf(one)} />}
-                        corner={working === one.id ? <Status tone="busy">copying</Status> : copied[one.id] ? <Status tone="good">in your objects</Status> : undefined}
+                        corner={working === one.id ? <Status tone="busy">{yours(one) ? "working" : "copying"}</Status>
+                          : copied[one.id] ? <Status tone="good">in your objects</Status>
+                          : yours(one) ? <Status tone="good">yours</Status> : undefined}
                         onOpen={() => setLooking({ object: one })} />
                 );
               })}
             </div>
           )}
+          {notYet.length ? (
+            <>
+              <div className="store-yours">
+                <h3>Yours, not in the store yet</h3>
+                <Button disabled={working !== undefined} onClick={() => void offerAll(notYet)}>
+                  {working === "all" ? "Putting them in…" : `Put all ${notYet.length} in the store`}
+                </Button>
+              </div>
+              <div className="cards">
+                {notYet.map((one) => {
+                  const { name, source } = nameAndSource(one.name);
+                  return (
+                    <Card key={one.id} name={name} detail={source ? `${kindSaid(one)} · ${source}` : kindSaid(one)}
+                          picture={one.preview || undefined} art={<ObjectArt kind={artOf(one)} />}
+                          corner={working === one.id ? <Status tone="busy">working</Status> : <Status>only yours</Status>}
+                          onOpen={() => setLooking({ object: one })} />
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
         </section>
       ) : null}
       {showVehicles ? (
@@ -167,6 +201,8 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
         const object = "object" in looking ? looking.object : undefined;
         const id = place?.id ?? object!.id;
         const mine = copied[id];
+        const own = object !== undefined && yours(object);
+        const inStore = object !== undefined && offered.has(object.id);
         const close = () => setLooking(undefined);
         const name = place?.name ?? nameAndSource(object!.name).name;
         return (
@@ -176,10 +212,18 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
                     {place ? <Button kind="ghost" onClick={() => { close(); onBuildOn?.(place.id); }}>Build a new place on its ground</Button> : null}
                     {place ? <Button onClick={() => { close(); onOpenPlace(place.id); }}>Look inside</Button> : null}
                     {mine ? <Button onClick={() => { close(); if (place) onOpenPlace(mine); else onOpenObject?.(mine); }}>Open your copy</Button> : null}
-                    <Button kind="primary" disabled={!institution || working !== undefined}
-                            onClick={() => void (place ? copyPlace(place) : copyObject(object!))}>
-                      {working === id ? "Copying…" : mine ? "Copy it again" : place ? "Copy to your places" : "Copy to your objects"}
-                    </Button>
+                    {own ? <Button onClick={() => { close(); onOpenObject?.(object.id); }}>Open it</Button> : null}
+                    {own ? (
+                      <Button kind={inStore ? "danger" : "primary"} disabled={working !== undefined}
+                              onClick={() => void offer(object, !inStore).then(close)}>
+                        {working === id ? "Working…" : inStore ? "Take it out of the store" : "Put it in the store"}
+                      </Button>
+                    ) : (
+                      <Button kind="primary" disabled={!institution || working !== undefined}
+                              onClick={() => void (place ? copyPlace(place) : copyObject(object!))}>
+                        {working === id ? "Copying…" : mine ? "Copy it again" : place ? "Copy to your places" : "Copy to your objects"}
+                      </Button>
+                    )}
                   </>}>
             <div className="store-look">
               {place ? <StoreCard one={place} photo={pictures[place.id]} pkg={packages.places.get(place.id)} working={false} />
@@ -187,7 +231,9 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
               <div className="store-said">
                 <p>{place?.summary ?? nameAndSource(object!.name).source ?? kindSaid(object!)}</p>
                 {place?.copies ? <p className="note">{place.copies === 1 ? "One copy is in your places." : `${place.copies} copies are in your places.`}</p> : null}
-                <p className="note">The store's own never changes; a copy is yours to change, and taking it again makes another.</p>
+                <p className="note">{own
+                  ? inStore ? "Anybody on iOcean can copy it into their own objects. Taking it out stops new copies; copies made stay." : "Only your organisation has it. In the store, anybody on iOcean can copy it."
+                  : "The store's own never changes; a copy is yours to change, and taking it again makes another."}</p>
               </div>
             </div>
           </Dialog>
