@@ -56,12 +56,10 @@ def as_edited(stage, coral, rows: list, not_drawn: list, units_per_metre: float 
     from pxr import Gf, Usd, UsdGeom
 
     moved = copied = gone = 0
-    for name in not_drawn:
-        prim = stage.GetPrimAtPath("/World/" + str(name).lstrip("/"))
-        if prim and prim.IsValid():
-            prim.SetActive(False)
-            gone += 1
-    for i, row in enumerate(rows):
+    bounds = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render])
+    work = []
+    # Copies first, so each references its colony as built, then the moves.
+    for i, row in sorted(enumerate(rows), key=lambda r: not r[1].get("copyOf")):
         name, was = row.get("prim"), row.get("builtAt")
         if not name or not was or i >= len(coral):
             continue
@@ -78,17 +76,43 @@ def as_edited(stage, coral, rows: list, not_drawn: list, units_per_metre: float 
                 continue
         grown = float(row.get("sizeM", 0.1)) / max(1e-6, float(row.get("builtSizeM") or row.get("sizeM", 0.1)))
         turn = float(row.get("headingDeg", 0.0))
-        now = coral.at[i]
-        then = coral.drawn_at[i] if coral.drawn_at is not None else now
-        if not row.get("copyOf") and abs(grown - 1.0) < 1e-6 and abs(turn) < 1e-6 \
-                and float(np.linalg.norm(now - then)) < 1e-6:
+        now = np.asarray(coral.at[i], dtype=float) * units_per_metre
+        then = np.asarray(coral.drawn_at[i] if coral.drawn_at is not None else coral.at[i], dtype=float) * units_per_metre
+        stays = float(np.linalg.norm(now[:2] - then[:2])) < 1e-6
+        if not row.get("copyOf") and abs(grown - 1.0) < 1e-6 and abs(turn) < 1e-6 and stays:
             continue
+        # The pivot is the colony's drawn base, which is not always the
+        # heightfield's: a colony built on a rock stands on the rock.
+        base = bounds.ComputeWorldBound(prim).ComputeAlignedRange()
+        if row.get("copyOf") and not base.IsEmpty():
+            # A copy carries its colony's own transform but not its parent's.
+            built = bounds.ComputeWorldBound(stage.GetPrimAtPath("/World/" + str(row["copyOf"]).lstrip("/"))).ComputeAlignedRange()
+            if not built.IsEmpty():
+                then[:2] += np.array(base.GetMin())[:2] - np.array(built.GetMin())[:2]
+        if not base.IsEmpty():
+            then[2] = base.GetMin()[2]
+        if stays:
+            now[2] = then[2]
+        edit = Gf.Matrix4d().SetTranslate(Gf.Vec3d(*(-then))) \
+            * Gf.Matrix4d().SetScale(Gf.Vec3d(grown, grown, grown)) \
+            * Gf.Matrix4d().SetRotate(Gf.Rotation(Gf.Vec3d(0, 0, 1), -turn)) \
+            * Gf.Matrix4d().SetTranslate(Gf.Vec3d(*now))
+        work.append((prim, edit, bool(row.get("copyOf"))))
+    # Measured, then written: the edit is in the world's frame, whatever
+    # transform the colony or its parent already carries.
+    worlds = [UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default()) for prim, _, _ in work]
+    for (prim, edit, copy), world in zip(work, worlds):
+        parent = UsdGeom.Xformable(prim.GetParent()).ComputeLocalToWorldTransform(Usd.TimeCode.Default()) \
+            if prim.GetParent().IsA(UsdGeom.Xformable) else Gf.Matrix4d(1.0)
         shape = UsdGeom.Xformable(prim)
-        shape.AddTranslateOp(opSuffix="world").Set(Gf.Vec3d(*(float(v) * units_per_metre for v in now)))
-        shape.AddRotateZOp(opSuffix="world").Set(-turn)
-        shape.AddScaleOp(opSuffix="world").Set(Gf.Vec3f(grown, grown, grown))
-        shape.AddTranslateOp(opSuffix="built").Set(Gf.Vec3d(*(-float(v) * units_per_metre for v in then)))
-        moved += 0 if row.get("copyOf") else 1
+        shape.ClearXformOpOrder()
+        shape.AddTransformOp(opSuffix="world").Set(world * edit * parent.GetInverse())
+        moved += 0 if copy else 1
+    for name in not_drawn:
+        prim = stage.GetPrimAtPath("/World/" + str(name).lstrip("/"))
+        if prim and prim.IsValid():
+            prim.SetActive(False)
+            gone += 1
     return {"moved": moved, "copied": copied, "notDrawn": gone}
 
 
