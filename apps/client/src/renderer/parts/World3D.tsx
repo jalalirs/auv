@@ -29,6 +29,8 @@ export interface Shown {
   /** Metres up, when it is not on the ground or the surface. */
   z?: number;
   headingDeg?: number;
+  /** A built colony's turn in the build, which its headingDeg turns from. */
+  builtDeg?: number;
   /** A coral's size, or across, along and up for a model or a reef. */
   sizeM?: number | [number, number, number];
   form?: string;
@@ -784,7 +786,7 @@ function coralsInto(group: THREE.Group, corals: Shown[], ground: Ground, lift: n
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75, side: THREE.DoubleSide }), list.length);
     colour.setHex(shape.colour);
     list.forEach((c, i) => {
-      q.setFromAxisAngle(up, -((c.headingDeg ?? 0) * Math.PI) / 180);
+      q.setFromAxisAngle(up, -(((c.builtDeg ?? 0) + (c.headingDeg ?? 0)) * Math.PI) / 180);
       const size = Math.max(0.15, Number(c.sizeM ?? 0.5));
       const at = new THREE.Vector3(c.x, floor(ground, c.x, c.y, lift) - 0.02, -c.y);
       m.compose(at, q, new THREE.Vector3(size, size, size));

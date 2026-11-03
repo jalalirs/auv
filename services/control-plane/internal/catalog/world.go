@@ -118,6 +118,36 @@ func WorldThings(versionID string, document json.RawMessage) (json.RawMessage, e
 	return json.Marshal(map[string]any{"version": versionID, "things": things})
 }
 
+// WorldColonies writes a world's reef as the runtime reads it in the brief:
+// {"version": ..., "items": [...]}, the coral items of its reef layers as they
+// are. A world whose reef has no coral items (one never opened in the editor,
+// or one with more colonies than the editor holds) gives nil, and the dive
+// keeps the build's colonies: an empty list would say every one was gone.
+func WorldColonies(versionID string, document json.RawMessage) (json.RawMessage, error) {
+	var world WorldDocument
+	if err := json.Unmarshal(document, &world); err != nil {
+		return nil, fmt.Errorf("reading a world document: %w", err)
+	}
+	items := []json.RawMessage{}
+	for _, layer := range world.Layers {
+		if layer.Kind != "reef" {
+			continue
+		}
+		for _, raw := range layer.Items {
+			var item struct {
+				Kind string `json:"kind"`
+			}
+			if json.Unmarshal(raw, &item) == nil && item.Kind == "coral" {
+				items = append(items, raw)
+			}
+		}
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(map[string]any{"version": versionID, "items": items})
+}
+
 // WorldBake is the package version a world document was baked into, or "".
 func WorldBake(document json.RawMessage) string {
 	var world WorldDocument

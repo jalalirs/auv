@@ -50,3 +50,26 @@ func TestAWorldIsRefusedWhenItCannotBeFlown(t *testing.T) {
 		}
 	}
 }
+
+func TestAWorldsReefIsHandedOverAsItsColonies(t *testing.T) {
+	doc := `{"iocean":"world/1","name":"Tank","frame":{"extentM":[2,1]},"georef":null,
+	 "layers":[{"id":"reef","kind":"reef","items":[
+	   {"id":"coral-1","kind":"coral","form":"table","x":0.1,"y":0.2,"sizeM":0.3,"headingDeg":0,"built":true,"prim":"Tank/Coral0"},
+	   {"id":"n1","kind":"note","x":0,"y":0}]},
+	  {"id":"structures","kind":"structures","items":[{"id":"t1","kind":"transponder","x":1,"y":0}]}]}`
+	got, err := WorldColonies("ver_1", json.RawMessage(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reef struct {
+		Version string            `json:"version"`
+		Items   []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(got, &reef); err != nil || reef.Version != "ver_1" || len(reef.Items) != 1 || !strings.Contains(string(reef.Items[0]), `"prim":"Tank/Coral0"`) {
+		t.Fatalf("handed over %s", got)
+	}
+	// A world that lists no colonies keeps the build's, rather than saying all are gone.
+	if got, _ := WorldColonies("ver_1", json.RawMessage(aWorld)); got != nil {
+		t.Fatalf("a world with no coral items handed over %s", got)
+	}
+}

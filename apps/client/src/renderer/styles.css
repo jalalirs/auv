@@ -2218,7 +2218,7 @@ button.link:hover { text-decoration: underline; }
 .home-start:hover { border-style: solid; border-color: var(--coral); background: rgba(64, 199, 244, 0.1); }
 .home-start .new-mark { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--coral); color: var(--coral-ink); }
 .home-start strong { display: block; font: 600 var(--t-strong)/1.3 var(--font); }
-.home-start small { display: block; color: var(--faint); font-size: var(--t-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-start small { display: block; color: var(--faint); font-size: var(--t-meta); line-height: 1.35; }
 .home-tile {
   position: relative; display: flex; flex-direction: column; gap: var(--s1); min-width: 0;
   padding: var(--s3) var(--s4) var(--s4); background: var(--shelf);

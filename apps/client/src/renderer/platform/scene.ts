@@ -43,13 +43,15 @@ export function withColonies(document: WorldDocument, colonies: Colony[] | undef
   const items: Item[] = colonies.map((c, i) => {
     const [x, y] = c.at;
     counted[c.kind] = (counted[c.kind] ?? 0) + 1;
-    // The turn the build gave it, from its place, as the runtime does.
+    // The turn the build gave it, from its place, as the runtime does. The
+    // runtime reads headingDeg as a turn from how it was built, so a built
+    // colony starts at 0 and carries the build's own turn only to be drawn.
     const turn = (((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1) + 1) % 1;
     return {
       id: `coral-${i + 1}`, kind: "coral", form: c.kind,
       name: `${CORAL_FORMS[c.kind]?.name ?? c.kind} ${counted[c.kind]}`,
       x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000,
-      sizeM: Math.round(c.sizeM * 1000) / 1000, headingDeg: Math.round(turn * 360),
+      sizeM: Math.round(c.sizeM * 1000) / 1000, headingDeg: 0, builtDeg: Math.round(turn * 360),
       built: true, ...(c.prim ? { prim: c.prim } : {}),
     };
   });

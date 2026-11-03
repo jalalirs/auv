@@ -55,6 +55,8 @@ type Claimed struct {
 	Layout          json.RawMessage `json:"layout,omitempty"`
 	// What a scenario changed about the world it is flown in.
 	LayoutChanges json.RawMessage `json:"layoutChanges,omitempty"`
+	// The world's reef as edited, for the runtime to draw the colonies by.
+	Colonies json.RawMessage `json:"colonies,omitempty"`
 
 	AutonomySlug   string `json:"autonomySlug"`
 	AutonomyName   string `json:"autonomyName"`
@@ -463,6 +465,11 @@ func (d *Diver) perform(ctx context.Context, claimed Claimed, log *slog.Logger,
 		// Whether there will be anything to look at. A dive flown for its
 		// numbers is not drawn, and the runner then starts no renderer at all.
 		"drawn": drawn,
+	}
+	// The world's reef as edited. Left out when there is none, and the
+	// runtime then draws the build's colonies as it always did.
+	if len(claimed.Colonies) > 0 {
+		brief["colonies"] = claimed.Colonies
 	}
 	briefDir := filepath.Join(d.workDir, claimed.Run.ID)
 	if err := os.MkdirAll(briefDir, 0o755); err != nil {

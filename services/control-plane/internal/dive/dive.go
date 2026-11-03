@@ -1375,6 +1375,10 @@ type Claimed struct {
 	// And what this scenario changed about it. A layout is what somebody drew;
 	// this is what happened to it.
 	LayoutChanges json.RawMessage `json:"layoutChanges,omitempty"`
+	// The world's reef as it was edited: its coral items, which the runtime
+	// moves, turns, copies and switches off the built colonies by. Absent when
+	// the dive pins no world or the world lists no colonies.
+	Colonies json.RawMessage `json:"colonies,omitempty"`
 
 	// What the controller flying this dive is called, by the people who
 	// deployed it. Carried because the record and the benchmark have to say
@@ -1620,6 +1624,9 @@ func (s *Store) ClaimNext(ctx context.Context, conn db.Conn, targetName string,
 		}
 		if json.Unmarshal(layout, &format) == nil && format.Format == catalog.WorldFormat {
 			if claimed.Layout, err = catalog.WorldThings(*layoutVersion, layout); err != nil {
+				return Claimed{}, err
+			}
+			if claimed.Colonies, err = catalog.WorldColonies(*layoutVersion, layout); err != nil {
 				return Claimed{}, err
 			}
 		}
