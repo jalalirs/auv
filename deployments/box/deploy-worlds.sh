@@ -44,6 +44,10 @@ docker compose --env-file .env run --rm migrate
 echo "5. the control plane, and MCP with worlds_get and worlds_save"
 docker compose --env-file .env up -d --no-deps control-plane mcp
 
+# The edge's nginx holds the old containers' addresses until it reloads:
+# without this the API answers 405 and MCP 404.
+docker exec iocean-edge-1 nginx -s reload
+
 echo "6. checks"
 sleep 8
 docker ps --format '{{.Names}} {{.Status}}' | grep -E '^iocean-(control-plane|edge|agent|mcp)'

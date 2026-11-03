@@ -33,8 +33,8 @@ FOUNDATIONS = "iocean/scratch/worlds/al-fahal"
 
 AL_FAHAL = "city_01M5VHA276DB6QMQ174B4B9XVB"
 TANK = "city_01M4106850Y74RGD3A5BSQ44GX"
-PLACES = [AL_FAHAL, TANK,
-          "city_01M60Z55CB6JJV87ZKXGKHA4DW",   # SubPipe outfall pipeline
+SUBPIPE = "city_01M60Z55CB6JJV87ZKXGKHA4DW"
+PLACES = [AL_FAHAL, TANK, SUBPIPE,
           "city_01M2DM5ACX3PXXH0ERQ9BJN08C",   # Thuwal Deep
           "city_01M5VJ84TZWC30M4ZGX11J0TZ6",   # Thuwal export line
           "city_01M4MN3MPJF84NP5H9GAQZM0BD"]   # Thuwal reef calibrated
@@ -144,6 +144,13 @@ def main(argv: list[str]) -> int:
         document = got["document"]
         if place == AL_FAHAL and not look:
             al_fahal(document, assets, briefs)
+        if place == SUBPIPE:
+            # Its video is the pipeline rebuilt, a structure and not a reef;
+            # still drawn from the package, so an object, not a thing.
+            reef, structures = layer(document, "reef"), layer(document, "structures")
+            structures["items"] += [{**i, "kind": "object", "meets": "rebuilt", "x": 0, "y": 0}
+                                    for i in reef.get("items") or []]
+            reef["items"] = []
         if place == TANK and not look:
             life = layer(document, "life")
             life["species"] = {"asset": tank_species, "name": "Jeddah tank species, from footage",
