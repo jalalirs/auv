@@ -1,5 +1,5 @@
 {
-  "_": "Al Fahal repeat plot round: three permanent 10 m photo plots, each marked by a stake at its south-west corner, flown as a lawnmower 3 m off the bottom, then back to the boat. A plot counts as photographed at 98% of it seen (chosen): chasing the last half-metre corner held the vehicle eight minutes over plot A in the trial. Where: the three 10 m squares with the most colony area within 60 m of where the place begins (the place's own colonies; derived). 10 m plots are chosen, the size reef monitoring programmes photograph. What each plot reports is how much of it the camera saw (from the poses and the lens) and its cover, point-counted at the middle of every 0.5 m cell seen; the kinds are the place builder's guess from shape and colour (tools/benthos). A round given the last round's cover per plot (lastCover) says how far each kind moved since, in points. The first round has nothing to compare with; the next carries this one's numbers. Al Fahal's reef is drawn as a layer, so a world's coral edits do not reach it, and between two rounds over the same reef any change is the method's own scatter.",
+  "_": "Al Fahal repeat plot round: three permanent 10 m photo plots, each marked by a stake at its south-west corner, flown as a lawnmower 3 m off the bottom, then back to the boat. A plot counts as photographed at 98% of it seen (chosen): chasing the last half-metre corner held the vehicle eight minutes over plot A in the trial. Where: the three 10 m squares with the most colony area within 60 m of where the place begins (the place's own colonies; derived). 10 m plots are chosen, the size reef monitoring programmes photograph. What each plot reports is how much of it the camera saw (from the poses and the lens) and its cover, point-counted at the middle of every 0.5 m cell seen; the kinds are the place builder's guess from shape and colour (tools/benthos). A round given the last round's cover per plot (lastCover) says how far each kind moved since, in points. Each plot carries the last round's cover: round 1 (dive_01M6K3WFT6DYVR71PYKMT3ZK0B, 2026-11-04) as the platform measured it. Al Fahal's reef is drawn as a layer, so a world's coral edits do not reach it, and between two rounds over the same reef any change is the method's own scatter.",
   "place": "al-fahal",
   "layout": {
     "slug": "al-fahal-photo-plots",
@@ -57,7 +57,23 @@
         "altitudeBandM": 1.5,
         "swathM": 4.0,
         "timeLimitS": 600,
-        "enoughShare": 0.98
+        "enoughShare": 0.98,
+        "lastCover": {
+          "value": {
+            "brain": 9.9,
+            "branching": 10.4,
+            "encrusting": 5.9,
+            "fan": 1.3,
+            "finger": 1.5,
+            "massive": 21.6,
+            "plume": 15.5,
+            "rock": 13.5,
+            "rubble": 0.3,
+            "sponge": 4.3,
+            "table": 15.8
+          },
+          "from": "round 1, dive_01M6K3WFT6DYVR71PYKMT3ZK0B, 2026-11-04"
+        }
       },
       {
         "kind": "survey",
@@ -76,7 +92,22 @@
         "altitudeBandM": 1.5,
         "swathM": 4.0,
         "timeLimitS": 600,
-        "enoughShare": 0.98
+        "enoughShare": 0.98,
+        "lastCover": {
+          "value": {
+            "brain": 11.2,
+            "branching": 6.9,
+            "encrusting": 9.1,
+            "fan": 1.3,
+            "massive": 19.3,
+            "plume": 7.1,
+            "rock": 10.7,
+            "rubble": 3,
+            "sponge": 7.9,
+            "table": 23.6
+          },
+          "from": "round 1, dive_01M6K3WFT6DYVR71PYKMT3ZK0B, 2026-11-04"
+        }
       },
       {
         "kind": "survey",
@@ -95,7 +126,22 @@
         "altitudeBandM": 1.5,
         "swathM": 4.0,
         "timeLimitS": 600,
-        "enoughShare": 0.98
+        "enoughShare": 0.98,
+        "lastCover": {
+          "value": {
+            "brain": 8.4,
+            "branching": 10.9,
+            "encrusting": 7.6,
+            "fan": 1.3,
+            "massive": 25.6,
+            "plume": 14,
+            "rock": 5.3,
+            "rubble": 2.3,
+            "sponge": 6.6,
+            "table": 18
+          },
+          "from": "round 1, dive_01M6K3WFT6DYVR71PYKMT3ZK0B, 2026-11-04"
+        }
       },
       {
         "kind": "return",
