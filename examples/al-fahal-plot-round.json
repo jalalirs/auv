@@ -1,5 +1,5 @@
 {
-  "_": "Al Fahal repeat plot round: three permanent 10 m photo plots, each marked by a stake at its south-west corner, flown as a lawnmower 3 m off the bottom, then back to the boat. Where: the three 10 m squares with the most colony area within 60 m of where the place begins (the place's own colonies; derived). 10 m plots are chosen, the size reef monitoring programmes photograph. What each plot reports is how much of it the camera saw (from the poses and the lens) and its cover, point-counted at the middle of every 0.5 m cell seen; the kinds are the place builder's guess from shape and colour (tools/benthos). A round given the last round's cover per plot (lastCover) says how far each kind moved since, in points. The first round has nothing to compare with; the next carries this one's numbers. Al Fahal's reef is drawn as a layer, so a world's coral edits do not reach it, and between two rounds over the same reef any change is the method's own scatter.",
+  "_": "Al Fahal repeat plot round: three permanent 10 m photo plots, each marked by a stake at its south-west corner, flown as a lawnmower 3 m off the bottom, then back to the boat. A plot counts as photographed at 98% of it seen (chosen): chasing the last half-metre corner held the vehicle eight minutes over plot A in the trial. Where: the three 10 m squares with the most colony area within 60 m of where the place begins (the place's own colonies; derived). 10 m plots are chosen, the size reef monitoring programmes photograph. What each plot reports is how much of it the camera saw (from the poses and the lens) and its cover, point-counted at the middle of every 0.5 m cell seen; the kinds are the place builder's guess from shape and colour (tools/benthos). A round given the last round's cover per plot (lastCover) says how far each kind moved since, in points. The first round has nothing to compare with; the next carries this one's numbers. Al Fahal's reef is drawn as a layer, so a world's coral edits do not reach it, and between two rounds over the same reef any change is the method's own scatter.",
   "place": "al-fahal",
   "layout": {
     "slug": "al-fahal-photo-plots",
@@ -56,7 +56,8 @@
         "altitudeM": 3.0,
         "altitudeBandM": 1.5,
         "swathM": 4.0,
-        "timeLimitS": 600
+        "timeLimitS": 600,
+        "enoughShare": 0.98
       },
       {
         "kind": "survey",
@@ -74,7 +75,8 @@
         "altitudeM": 3.0,
         "altitudeBandM": 1.5,
         "swathM": 4.0,
-        "timeLimitS": 600
+        "timeLimitS": 600,
+        "enoughShare": 0.98
       },
       {
         "kind": "survey",
@@ -92,7 +94,8 @@
         "altitudeM": 3.0,
         "altitudeBandM": 1.5,
         "swathM": 4.0,
-        "timeLimitS": 600
+        "timeLimitS": 600,
+        "enoughShare": 0.98
       },
       {
         "kind": "return",

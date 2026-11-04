@@ -120,6 +120,18 @@ def test_a_plot_is_point_counted_and_compared_with_the_last_round():
     assert "stony -" in task.says()
 
 
+def test_a_plot_seen_but_for_a_corner_is_done_when_that_is_enough():
+    area = [{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 10.0}]
+    task = task_for({"kind": "survey", "area": area, "altitudeM": 2.0, "swathM": 2.0, "enoughShare": 0.95},
+                    np.array([0.0, 0.0, -5.0]), 0.0)
+    # Every lane but the last half-metre of the last.
+    for lane in range(5):
+        xs = np.linspace(0.0, 10.0 if lane < 4 else 9.0, 41)
+        for i, x in enumerate(xs if lane % 2 == 0 else xs[::-1]):
+            task.step(lane * 41 + i, np.array([x, 9.0 - 2.0 * lane, -5.0]), 0.0, -7.0, [0.0] * 6)
+    assert task.done and not task.failed(), task.detail()
+
+
 def test_a_transect_is_not_flown_by_passing_beside_it():
     task = task_for({"kind": "transect", "from": {"x": 100.0, "y": -20.0}, "to": {"x": 120.0, "y": -20.0},
                      "altitudeM": 2.0}, START, 0.0)

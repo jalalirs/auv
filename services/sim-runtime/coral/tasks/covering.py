@@ -49,6 +49,10 @@ class Survey(Task):
         self.altitude = float(objective.get("altitudeM", 2.0))
         self.band = float(objective.get("altitudeBandM", 1.0))
         self.swath = float(objective.get("swathM", 3.0))
+        # How much of the box is enough. A plot photographed but for one
+        # half-metre corner is a plot photographed: chasing the last cell held
+        # a vehicle over one corner of an Al Fahal plot for eight minutes.
+        self.enough = min(1.0, float(objective.get("enoughShare", 1.0)))
         ahead = self.ahead()
         self.u = np.array(ahead)
         self.v = np.array([ahead[1], -ahead[0]])
@@ -104,7 +108,7 @@ class Survey(Task):
                     under = lies_under(self.coral, middle)
                     self.points[under] = self.points.get(under, 0) + 1
             self.seen[r0:r1, c0:c1] = True
-        if self.seen.all() or elapsed >= float(self.objective.get("timeLimitS", 1e9)):
+        if self.seen.mean() >= self.enough - 1e-9 or elapsed >= float(self.objective.get("timeLimitS", 1e9)):
             self.done = True
 
     def score(self) -> float:
@@ -176,7 +180,7 @@ class Survey(Task):
                 "altitudeM": self.altitude, "swathM": self.swath}
 
     def failed(self) -> bool:
-        return self.done and self.score() < 0.999
+        return self.done and self.score() < min(0.999, self.enough)
 
 
 class Search(Task):
