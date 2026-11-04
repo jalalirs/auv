@@ -317,3 +317,18 @@ def footprint_half_angle(camera: dict | None) -> float | None:
     if focal:
         return math.atan(18.0 / float(focal))
     return None
+
+
+def lies_under(coral, xy) -> str:
+    """What a camera looking straight down at `xy` sees: the kind of the
+    colony it is over, the nearest if it is over two, or bare. The kinds are
+    what the place called each colony where it says, its forms otherwise."""
+    near = coral.near(xy[:2], 0.0)
+    if not len(near):
+        return "bare"
+    away = np.hypot(*(coral.at[near, :2] - np.asarray(xy[:2])).T)
+    inside = away <= coral.radius[near]
+    if not inside.any():
+        return "bare"
+    called = coral.called if getattr(coral, "called", None) is not None else coral.kind
+    return str(called[near[inside][np.argmin(away[inside])]])

@@ -13,16 +13,23 @@ import math
 
 import numpy as np
 
-from .base import Task, footprint_half_angle
+from .base import Task, footprint_half_angle, lies_under
 
 
 class Survey(Task):
     """Cover a rectangle. What counts as seen is what the camera's footprint
     on the bottom covered at each pose — derived from the poses and the
     camera, not asserted — when the vehicle carries a camera the catalogue
-    describes; a fixed swath otherwise."""
+    describes; a fixed swath otherwise.
 
-    wants = ("camera",)
+    Over a reef the box is a photo plot, and what the camera saw of it is
+    point-counted: each cell, when first seen, is scored by what lies under
+    its middle, a grid of points half a metre apart, the way a plot's
+    photographs are read. Given what the last round over the same plot
+    found (`lastCover`), it says how far each kind has moved since, in
+    points of cover."""
+
+    wants = ("camera", "coral")
     stops_a_mission = False
     kind = "survey"
     flies_through = True
@@ -30,9 +37,12 @@ class Survey(Task):
 
     CELL = 0.5
 
-    def __init__(self, objective, began_at, heading, camera: dict | None = None, **extra) -> None:
+    def __init__(self, objective, began_at, heading, camera: dict | None = None,
+                 coral=None, **extra) -> None:
         super().__init__(objective, began_at, heading, **extra)
         self.camera = camera
+        self.coral = coral if coral is not None and len(coral) else None
+        self.points: dict[str, int] = {}
         self.half_angle = footprint_half_angle(camera)
         self.width = float(objective.get("widthM", 20.0))     # along the heading
         self.height = float(objective.get("heightM", 10.0))   # to starboard
@@ -86,6 +96,13 @@ class Survey(Task):
         r0 = max(0, int((across - half) / self.CELL))
         r1 = min(self.rows, int((across + half) / self.CELL) + 1)
         if c0 < c1 and r0 < r1:
+            if self.coral is not None:
+                fresh = ~self.seen[r0:r1, c0:c1]
+                for r, c in zip(*np.nonzero(fresh)):
+                    middle = (self.began_at[:2] + self.u * ((c0 + c + 0.5) * self.CELL)
+                              + self.v * ((r0 + r + 0.5) * self.CELL))
+                    under = lies_under(self.coral, middle)
+                    self.points[under] = self.points.get(under, 0) + 1
             self.seen[r0:r1, c0:c1] = True
         if self.seen.all() or elapsed >= float(self.objective.get("timeLimitS", 1e9)):
             self.done = True
@@ -93,13 +110,52 @@ class Survey(Task):
     def score(self) -> float:
         return float(self.seen.mean())
 
+    def cover(self) -> dict | None:
+        if self.coral is None:
+            return None
+        counted = sum(self.points.values())
+        return {"value": {kind: round(100.0 * n / counted, 1) for kind, n in sorted(self.points.items())}
+                if counted else {},
+                "unit": "% of the points", "points": counted, "kind": "derived",
+                "from": f"a point under the middle of every {self.CELL:g} m cell of the plot the camera saw, "
+                        "over the colonies the place holds; what each colony is, the place's guess "
+                        "from its shape and colour"}
+
+    def change(self) -> dict | None:
+        """Since the last round: each kind's cover now less then, in points.
+        A kind either round did not find counts as none in it."""
+        last = self.objective.get("lastCover")
+        cover = self.cover()
+        if not isinstance(last, dict) or cover is None or not cover["points"]:
+            return None
+        then = last.get("value") if isinstance(last.get("value"), dict) else last
+        then = {k: float(v) for k, v in then.items() if isinstance(v, (int, float))}
+        now = cover["value"]
+        return {"value": {kind: round(now.get(kind, 0.0) - then.get(kind, 0.0), 1)
+                          for kind in sorted(set(now) | set(then))},
+                "unit": "points of cover", "kind": "derived",
+                "since": last.get("from", "the last round, as the mission gives it"),
+                "from": "this round's point count less the last round's"}
+
     def says(self) -> str:
-        return f"{self.score() * 100:.0f}% of the rectangle seen"
+        said = f"{self.score() * 100:.0f}% of the rectangle seen"
+        moved = (self.change() or {}).get("value") or {}
+        big = sorted(((abs(v), k, v) for k, v in moved.items() if abs(v) >= 1.0), reverse=True)[:3]
+        if big:
+            said += "; since last round " + ", ".join(f"{k} {v:+g}" for _, k, v in big)
+        elif moved:
+            said += "; no kind moved a point since last round"
+        return said
 
     def detail(self) -> dict:
-        return {"fractionSeen": round(self.score(), 3), "widthM": self.width, "heightM": self.height,
+        said = {"fractionSeen": round(self.score(), 3), "widthM": self.width, "heightM": self.height,
                 "altitudeM": self.altitude, "swathM": round(getattr(self, "swath_now", self.swath), 2),
                 "swathFrom": "camera footprint" if self.half_angle is not None else "declared"}
+        if self.coral is not None:
+            said["cover"] = self.cover()
+            if self.change() is not None:
+                said["change"] = self.change()
+        return said
 
     def geometry(self) -> dict:
         corners = []

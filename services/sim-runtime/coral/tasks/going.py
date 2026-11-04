@@ -12,7 +12,7 @@ import math
 
 import numpy as np
 
-from .base import Task, wrap
+from .base import Task, lies_under, wrap
 
 
 class HoldStation(Task):
@@ -259,17 +259,7 @@ class Transect(Task):
             self.done = True
 
     def under(self, position) -> str:
-        """What the camera is looking straight down at: the kind of the
-        colony the vehicle is over, the nearest if it is over two, or bare."""
-        near = self.coral.near(position[:2], 0.0)
-        if not len(near):
-            return "bare"
-        away = np.hypot(*(self.coral.at[near, :2] - position[:2]).T)
-        inside = away <= self.coral.radius[near]
-        if not inside.any():
-            return "bare"
-        called = self.coral.called if getattr(self.coral, "called", None) is not None else self.coral.kind
-        return str(called[near[inside][np.argmin(away[inside])]])
+        return lies_under(self.coral, position)
 
     def intercept(self) -> dict | None:
         if self.coral is None:
