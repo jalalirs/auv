@@ -147,6 +147,7 @@ class Search(Task):
     stops_a_mission = False
     kind = "search"
     name = "Find it"
+    CELL = 0.5          # how finely the ground searched is counted, m
 
     def __init__(self, objective, began_at, heading, camera: dict | None = None, **extra) -> None:
         super().__init__(objective, began_at, heading, **extra)
@@ -159,6 +160,20 @@ class Search(Task):
         self.limit = float(objective.get("timeLimitS", 900.0))
         self.target = self.somewhere(objective.get("target"),
                                      self.out_from_start(self.width * 0.7, self.height * 0.6))
+        # Lost near a known point: where it was last seen and how far from it
+        # it could be. The search starts there and spreads out (an expanding
+        # square); the thing itself is still only known to the judge.
+        self.datum = None
+        self.radius = float(objective.get("radiusM", 20.0))
+        self.covered: np.ndarray | None = None
+        if objective.get("datum") is not None:
+            self.datum = self.somewhere(objective.get("datum"))
+            cells = int(math.ceil(2.0 * self.radius / self.CELL))
+            self.covered = np.zeros((cells, cells), dtype=bool)
+            middle = (np.arange(cells) + 0.5) * self.CELL - self.radius
+            self.inside = np.hypot(*np.meshgrid(middle, middle, indexing="ij")) <= self.radius
+            self.cell_middle = middle
+        self.marked: np.ndarray | None = None
         self.found = False
         self.found_at = 0.0
         self.reported: np.ndarray | None = None
@@ -184,12 +199,37 @@ class Search(Task):
         away = float(np.hypot(*flat))
         self.closest = min(self.closest, away)
         swath = self.swath_at(position, floor)
+        if self.covered is not None and swath > 0.0:
+            self.sweep(position, swath)
         if not self.found and swath > 0.0 and away <= swath:
             self.found = True
             self.found_at = elapsed
             self.done = True
+            # Marked where the vehicle believes it is when the thing is under
+            # it: that is the position the boat is given, and the gap to the
+            # truth is how far a diver sent down on it would have to look.
+            if self.believed is not None:
+                self.marked = np.asarray(self.believed, dtype=float)[:3].copy()
         if elapsed >= self.limit:
             self.done = True
+
+    def sweep(self, position, swath: float) -> None:
+        """The ground under the camera now, counted as searched."""
+        offset = np.asarray(position[:2], dtype=float) - self.datum[:2]
+        cells = self.covered.shape[0]
+        low = np.searchsorted(self.cell_middle, offset - swath)
+        high = np.searchsorted(self.cell_middle, offset + swath)
+        if high[0] <= 0 or high[1] <= 0 or low[0] >= cells or low[1] >= cells:
+            return
+        i = slice(max(0, low[0]), min(cells, high[0]))
+        j = slice(max(0, low[1]), min(cells, high[1]))
+        di, dj = np.meshgrid(self.cell_middle[i] - offset[0], self.cell_middle[j] - offset[1], indexing="ij")
+        self.covered[i, j] |= np.hypot(di, dj) <= swath
+
+    def covered_share(self) -> float | None:
+        if self.covered is None:
+            return None
+        return float((self.covered & self.inside).sum()) / max(1, int(self.inside.sum()))
 
     def swath_at(self, position, floor) -> float:
         """How far to either side the camera is seeing the bottom, right now.
@@ -214,19 +254,47 @@ class Search(Task):
         return min(1.0, 0.6 + 0.4 * quickly)
 
     def says(self) -> str:
+        share = self.covered_share()
+        swept = "" if share is None else f", {share:.0%} of the circle searched"
         if self.found:
-            return f"found after {self.found_at:.0f} s and {self.travelled:.0f} m"
-        return f"searching — {self.travelled:.0f} m covered, nearest pass {self.closest:.1f} m"
+            return f"found after {self.found_at:.0f} s and {self.travelled:.0f} m{swept}"
+        return f"searching — {self.travelled:.0f} m covered, nearest pass {self.closest:.1f} m{swept}"
 
     def detail(self) -> dict:
-        return {"found": self.found, "foundAtS": round(self.found_at, 1),
+        said = {"found": self.found, "foundAtS": round(self.found_at, 1),
                 "travelledM": round(self.travelled, 1),
                 "closestPassM": None if self.closest == float("inf") else round(self.closest, 2),
                 "reportErrorM": None if self.report_error is None else round(self.report_error, 2),
                 "seeM": self.see, "timeLimitS": self.limit}
+        if self.datum is not None:
+            share = self.covered_share()
+            said.update({
+                "pattern": "expanding-square",
+                "datum": [round(float(v), 2) for v in self.datum[:2]],
+                "radiusM": self.radius,
+                # The share of the circle the camera saw the bottom over: what
+                # a search coordinator reports as the area searched.
+                "searchedShare": None if share is None else round(share, 3),
+                # Only the judge knows this; a search learns it on finding.
+                "fromDatumM": None if self.target is None else
+                    round(float(np.linalg.norm(self.target[:2] - self.datum[:2])), 2),
+                "markedAt": None if self.marked is None else [round(float(v), 2) for v in self.marked[:2]],
+                "markedErrorM": None if self.marked is None or self.target is None else
+                    round(float(np.linalg.norm(self.marked[:2] - self.target[:2])), 2),
+            })
+        return said
 
     def geometry(self) -> dict:
         # The area, and — only once it has been found — where it was.
+        if self.datum is not None:
+            corners = [{"x": float(self.datum[0] + a * self.radius), "y": float(self.datum[1] + b * self.radius)}
+                       for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            drawn = {"rectangle": corners}
+            if self.found:
+                drawn["points"] = [{"x": float(self.target[0]), "y": float(self.target[1]),
+                                    "depthM": float(-self.target[2])}]
+                drawn["reached"] = 1
+            return drawn
         ahead = np.array(self.ahead())
         right = np.array([ahead[1], -ahead[0]])
         corners = []
@@ -242,6 +310,18 @@ class Search(Task):
 
     def goal(self) -> dict:
         ahead = np.array(self.ahead())
+        if self.datum is not None:
+            # Still a cover goal, with the square that holds the circle as its
+            # rectangle: a planner that does not fly an expanding square flies
+            # lanes over the same ground, which is a search too.
+            right = np.array([ahead[1], -ahead[0]])
+            corner = self.datum[:2] - ahead * self.radius - right * self.radius
+            return {"kind": "cover", "pattern": "expanding-square",
+                    "datum": [float(v) for v in self.datum[:2]], "radiusM": self.radius,
+                    "corner": [float(v) for v in corner],
+                    "along": [float(ahead[0]), float(ahead[1])],
+                    "widthM": 2.0 * self.radius, "heightM": 2.0 * self.radius,
+                    "altitudeM": self.altitude, "seeM": self.see}
         return {"kind": "cover", "corner": [float(v) for v in self.began_at[:2]],
                 "along": [float(ahead[0]), float(ahead[1])],
                 "widthM": self.width, "heightM": self.height,

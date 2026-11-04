@@ -1,0 +1,71 @@
+{
+  "_": "Shushah: a dive-site mooring block lost at the foot of the reef slope, searched for with an expanding square from where the boat logged the buoy. Where: the sand at 15 to 17 m below the slope the place begins on (the place's own Sentinel-2 depths, fitted to ICESat-2; derived). The story is chosen, not reported: the buoy's riser parted, the buoy went, and the block is somewhere near the buoy's last logged position. The datum is that position; 20 m is the circle it could be in (a boat's GPS over a buoy that swings on its riser; chosen). The block is placed 9.2 m from the datum, and only the judge knows where: the planner is given the datum and the radius. The search is flown 2.5 m off the bottom, the lanes a camera footprint apart (85% of it), outwards from the datum until the square holds the circle (IAMSAR's expanding square). The vehicle is on USBL from the boat, so where it marks the block is a metre or so out, and the result says by how much. Then it comes back to the boat.",
+  "place": "shushah",
+  "layout": {
+    "slug": "shushah-lost-mooring",
+    "name": "Shushah: the lost mooring block",
+    "summary": "A dive-site mooring block on the sand at the foot of the reef, its buoy gone.",
+    "things": [
+      {
+        "id": "lost-block",
+        "kind": "mooring-block",
+        "x": -239.3,
+        "y": -715.4,
+        "what": "the dive-site mooring block whose riser parted"
+      }
+    ]
+  },
+  "mission": {
+    "slug": "shushah-find-the-lost-block",
+    "name": "Find the lost mooring block",
+    "summary": "An expanding-square search out from the buoy's last logged position, 20 m round, for a block the riser no longer marks; where the vehicle marks it against where it is, then back to the boat.",
+    "stages": [
+      {
+        "kind": "search",
+        "name": "Expanding square from the datum",
+        "datum": {
+          "x": -233.3,
+          "y": -708.4
+        },
+        "radiusM": 20.0,
+        "target": {
+          "over": "lost-block"
+        },
+        "altitudeM": 2.5,
+        "seeM": 10.0,
+        "timeLimitS": 2400,
+        "tetherOutM": 120
+      },
+      {
+        "kind": "return",
+        "name": "Back to the boat",
+        "home": {
+          "x": -213.3,
+          "y": -663.4
+        },
+        "homeRadiusM": 3.0,
+        "timeLimitS": 600
+      }
+    ],
+    "launch": {
+      "x": -213.3,
+      "y": -663.4
+    }
+  },
+  "dives": [
+    {
+      "name": "Shushah: BlueROV2 searches for the lost block",
+      "vehicle": "bluerov2",
+      "waterName": "slack water, USBL from the boat",
+      "water": {
+        "currentMetresPerSecond": 0.05,
+        "currentHeadingDeg": 330,
+        "positioning": {
+          "kind": "usbl",
+          "accuracyM": 1.0,
+          "everyS": 2.0
+        }
+      }
+    }
+  ]
+}

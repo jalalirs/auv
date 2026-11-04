@@ -13,6 +13,7 @@ Run with plain pytest from services/sim-runtime/coral.
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 import sys
 
@@ -259,6 +260,47 @@ def test_a_search_flown_too_high_for_the_water_sees_nothing():
         at = np.array([START[0] + step * 0.5, START[1], START[2]])
         task.step(step * 1.0, at, 0.0, START[2] - 8.0, [0.1])
     assert not task.detail()["found"], "it saw the bottom from twice the visibility"
+
+
+def test_a_lost_thing_is_searched_for_outwards_from_where_it_was_last_seen():
+    """An expanding square from the datum, lanes a swath apart, until the
+    square holds the circle of uncertainty; the find is marked where the
+    vehicle believes it is, and the gap to the truth is reported."""
+    from controllers import plan as planning
+    from tasks import task_for
+
+    datum = {"x": START[0] + 30.0, "y": START[1]}
+    objective = {"kind": "search", "datum": datum, "radiusM": 15.0, "altitudeM": 2.5, "seeM": 8.0,
+                 "target": {"x": START[0] + 36.0, "y": START[1] - 7.0}, "timeLimitS": 3600}
+    camera = {"horizontalFovDeg": 80.0}
+    task = task_for(objective, np.array(START), 0.0, camera=camera)
+    goal = task.goal()
+    assert goal["kind"] == "cover" and goal["pattern"] == "expanding-square"
+    route = planning.route_for(goal, camera_half_angle=task.half_angle)
+    first = np.array([route[0]["x"], route[0]["y"]])
+    assert np.allclose(first, [datum["x"], datum["y"]]), "it did not start where the thing was last seen"
+    reach = max(max(abs(p["x"] - datum["x"]), abs(p["y"] - datum["y"])) for p in route)
+    assert 15.0 <= reach <= 15.0 + 2.0 * 2.5 * math.tan(task.half_angle) + 1.0, f"the square stopped at {reach:.1f} m"
+    # A lawnmower over the same ground is what a planner without the pattern flies.
+    assert len(planning._cover({k: v for k, v in goal.items() if k != "pattern"}, task.half_angle)) > 2
+
+    # Flown along the route, believing itself 1.5 m east of where it is.
+    floor = START[2] - 2.5
+    t = 0.0
+    for a, b in zip(route, route[1:]):
+        a, b = np.array([a["x"], a["y"]]), np.array([b["x"], b["y"]])
+        for f in np.linspace(0.0, 1.0, max(2, int(np.linalg.norm(b - a) / 0.25))):
+            at = np.array([*(a + (b - a) * f), START[2]])
+            task.step(t, at, 0.0, floor, [0.1], believed=at + np.array([1.5, 0.0, 0.0]))
+            t += 0.5
+        if task.done:
+            break
+    said = task.detail()
+    assert said["found"], task.says()
+    assert said["fromDatumM"] == round(math.hypot(6.0, 7.0), 2)
+    assert 0.0 < said["searchedShare"] < 1.0
+    assert said["markedErrorM"] is not None and said["markedErrorM"] >= 1.0, said
+    assert "of the circle searched" in task.says()
 
 
 def test_a_plan_beyond_the_vehicle_is_refused_by_the_dive_too():

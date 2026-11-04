@@ -378,7 +378,38 @@ def _cover(goal: dict, half_angle: float | None) -> list[dict]:
     # down: what it sees is the swath under it, and visibility only decides
     # whether it can see the bottom at all. Adding it opened the lanes to
     # twice what the camera covered and the target passed between them.
+    if goal.get("pattern") == "expanding-square" and goal.get("datum") is not None:
+        return _expanding_square(goal, max(1.0, swath * 0.85), altitude)
     return _lawnmower(goal, max(1.0, swath * 0.85), altitude)
+
+
+def _expanding_square(goal: dict, spacing: float, altitude: float) -> list[dict]:
+    """Out from where it was last seen, in a square that grows a lane a turn.
+
+    The search a boat flies for something lost near a known point (IAMSAR's
+    expanding square): the most likely ground is under the datum, so that is
+    swept first, and every two legs the next is a lane longer, which keeps the
+    lanes a swath apart all the way out. Flown until the square holds the
+    circle the datum's uncertainty draws, and no further.
+    """
+    datum = np.asarray(goal["datum"], dtype=float)[:2]
+    radius = float(goal.get("radiusM", 20.0))
+    along = np.asarray(goal.get("along", [0.0, 1.0]), dtype=float)[:2]
+    along = along / max(1e-9, float(np.linalg.norm(along)))
+    right = np.array([along[1], -along[0]])
+    turns = (along, right, -along, -right)
+    here = datum.copy()
+    route = [{"x": float(here[0]), "y": float(here[1]), "altitudeM": altitude}]
+    leg = 0
+    while True:
+        length = spacing * (leg // 2 + 1)
+        here = here + turns[leg % 4] * length
+        route.append({"x": float(here[0]), "y": float(here[1]), "altitudeM": altitude})
+        leg += 1
+        # Done once the last full turn has a half-width past the radius.
+        if leg % 4 == 0 and spacing * (leg // 2) / 2.0 >= radius + spacing / 2.0:
+            break
+    return route
 
 
 def _work(goal: dict, half_angle: float | None) -> list[dict]:
