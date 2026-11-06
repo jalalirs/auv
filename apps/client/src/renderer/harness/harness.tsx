@@ -313,6 +313,7 @@ Object.assign(platform, {
   storeObjects: () => delay([{ ...ASSETS.find((a) => a.id === "recon_v1"), id: "store_obj_1" }]),
   copyStoreObject: (_org: string, from: string) => { said.push(`copied object ${from}`); return delay({ ...ASSETS[0], id: id("recon") }); },
   copyStorePlace: (_org: string, city: string) => { said.push(`copied place ${city}`); return delay({ id: id("city"), name: "copy" }); },
+  offerPlace: (id: string, on: boolean) => { said.push(`${on ? "offered" : "took back"} place ${id}`); return delay({ id, inStore: on }); },
   offerAsset: (id: string, on: boolean) => { said.push(`${on ? "offered" : "took back"} ${id}`); return delay(ASSETS.find((a) => a.id === id)); },
   archiveAsset: (id: string) => {
     const at = ASSETS.findIndex((a) => a.id === id);

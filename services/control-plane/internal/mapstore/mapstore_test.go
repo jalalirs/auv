@@ -45,3 +45,17 @@ func TestOnlyPlacesThatShareGroundWithTheAreaAreOffered(t *testing.T) {
 		t.Errorf("distances %v and %v", near, far)
 	}
 }
+
+func TestAnOrganisationsPlaceIsInTheStoreOnlyWhileOffered(t *testing.T) {
+	ours := catalog.City{OwnedByOrg: "org_a", Discoverable: true}
+	if Listed(ours) {
+		t.Fatal("an organisation's place was listed without being offered")
+	}
+	ours.InStore = true
+	if !Listed(ours) {
+		t.Fatal("an offered place was not listed")
+	}
+	if !Listed(catalog.City{Discoverable: true}) || Listed(catalog.City{}) {
+		t.Fatal("the store's own places are its discoverable ones")
+	}
+}

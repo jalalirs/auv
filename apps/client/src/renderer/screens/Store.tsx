@@ -88,6 +88,10 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
     setCopied((was) => ({ ...was, [one.id]: made.id }));
   });
   const offer = (one: Asset, on: boolean) => busy(one.id, async () => { await platform!.offerAsset(one.id, on); });
+  const offerPlace = (one: StorePlace, on: boolean) => busy(one.id, async () => { await platform!.offerPlace(one.id, on); });
+  const offerPlaces = (list: StorePlace[]) => busy("all-places", async () => {
+    for (const one of list) await platform!.offerPlace(one.id, true);
+  });
   const offerAll = (list: Asset[]) => busy("all", async () => {
     for (const one of list) await platform!.offerAsset(one.id, true);
   });
@@ -100,6 +104,13 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
   const offered = new Set((objects ?? []).map((o) => o.id));
   const notYet = ours.filter((o) => o.state === "ready" && !offered.has(o.id));
   const yours = (one: Asset) => institution !== undefined && one.orgId === institution.id;
+  // Your own places with a package to copy, not in the store yet.
+  const listed = new Set((store ?? []).map((p) => p.id));
+  const placesNotYet: StorePlace[] = held.places
+    .filter((p) => institution !== undefined && p.ownedByOrg === institution.id && !p.retiredAt && !listed.has(p.id) && packages.places.get(p.id))
+    .map((p) => ({ id: p.id, slug: p.slug, name: p.name, summary: p.summary ?? "", extent: p.extent ?? { west: 0, south: 0, east: 0, north: 0 },
+                   adopted: false, copies: 0, ownedByOrg: p.ownedByOrg }));
+  const ourPlace = (one: StorePlace) => institution !== undefined && one.ownedByOrg === institution.id;
   const published = new Set(held.vehicles.map((v) => v.slug));
   const vehicles = CATALOGUE.filter((v) => !published.has(v.slug));
   const showPlaces = kind === "all" || kind === "places";
@@ -111,20 +122,20 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
           info="iOcean builds places from public data and checks them before publishing them here. Copying a place makes a place of your own to change; the store's never changes, and you can copy it as many times as you like."
           toolbar={<Segmented label="Kind" value={kind} onChange={setKind}
                               options={[{ key: "all", label: "Everything" },
-                                        { key: "places", label: "Places", count: store?.length },
+                                        { key: "places", label: "Places", count: store ? store.length + placesNotYet.length : undefined },
                                         { key: "objects", label: "Objects", count: objects ? objects.length + notYet.length : undefined },
                                         { key: "vehicles", label: "Vehicles", count: vehicles.length }]} />}>
       {trouble ? <p className="trouble">{trouble}</p> : null}
       {showPlaces ? (
         <section className="store-kind">
           {kind === "all" ? <h2>Places</h2> : null}
-          {store === undefined ? <SkeletonCards count={3} /> : store.length === 0 ? (
+          {store === undefined ? <SkeletonCards count={3} /> : store.length + placesNotYet.length === 0 ? (
             <Empty title="No places in the store yet">iOcean publishes the places it builds from public data here.</Empty>
           ) : (
             <div className="cards">
               {store.map((one) => (
                 <StoreCard key={one.id} one={one} photo={pictures[one.id]} pkg={packages.places.get(one.id)}
-                           working={working === one.id} onOpen={() => setLooking({ place: one })} />
+                           working={working === one.id} yours={ourPlace(one)} onOpen={() => setLooking({ place: one })} />
               ))}
               {kind === "places" ? ENVIRONMENTS.map((one) => (
                 <Card key={one.key} name={one.name} detail={one.where}
@@ -133,6 +144,22 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
               )) : null}
             </div>
           )}
+          {placesNotYet.length ? (
+            <>
+              <div className="store-yours">
+                <h3>Your places, not in the store yet</h3>
+                <Button disabled={working !== undefined} onClick={() => void offerPlaces(placesNotYet)}>
+                  {working === "all-places" ? "Putting them in…" : placesNotYet.length === 1 ? "Put it in the store" : `Put all ${placesNotYet.length} in the store`}
+                </Button>
+              </div>
+              <div className="cards">
+                {placesNotYet.map((one) => (
+                  <StoreCard key={one.id} one={one} photo={undefined} pkg={packages.places.get(one.id)}
+                             working={working === one.id} onlyYours onOpen={() => setLooking({ place: one })} />
+                ))}
+              </div>
+            </>
+          ) : null}
         </section>
       ) : null}
       {showObjects ? (
@@ -201,21 +228,21 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
         const object = "object" in looking ? looking.object : undefined;
         const id = place?.id ?? object!.id;
         const mine = copied[id];
-        const own = object !== undefined && yours(object);
-        const inStore = object !== undefined && offered.has(object.id);
+        const own = object !== undefined ? yours(object) : ourPlace(place!);
+        const inStore = object !== undefined ? offered.has(object.id) : listed.has(place!.id);
         const close = () => setLooking(undefined);
         const name = place?.name ?? nameAndSource(object!.name).name;
         return (
           <Dialog title={name} onClose={close} wide
                   actions={<>
                     {place?.adopted ? <Button kind="danger" disabled={working !== undefined} onClick={() => void letGo(place)}>Stop sharing the store's own</Button> : null}
-                    {place ? <Button kind="ghost" onClick={() => { close(); onBuildOn?.(place.id); }}>Build a new place on its ground</Button> : null}
-                    {place ? <Button onClick={() => { close(); onOpenPlace(place.id); }}>Look inside</Button> : null}
+                    {place && !own ? <Button kind="ghost" onClick={() => { close(); onBuildOn?.(place.id); }}>Build a new place on its ground</Button> : null}
+                    {place && !own ? <Button onClick={() => { close(); onOpenPlace(place.id); }}>Look inside</Button> : null}
                     {mine ? <Button onClick={() => { close(); if (place) onOpenPlace(mine); else onOpenObject?.(mine); }}>Open your copy</Button> : null}
-                    {own ? <Button onClick={() => { close(); onOpenObject?.(object.id); }}>Open it</Button> : null}
+                    {own ? <Button onClick={() => { close(); if (place) onOpenPlace(place.id); else onOpenObject?.(object!.id); }}>Open it</Button> : null}
                     {own ? (
                       <Button kind={inStore ? "danger" : "primary"} disabled={working !== undefined}
-                              onClick={() => void offer(object, !inStore).then(close)}>
+                              onClick={() => void (place ? offerPlace(place, !inStore) : offer(object!, !inStore)).then(close)}>
                         {working === id ? "Working…" : inStore ? "Take it out of the store" : "Put it in the store"}
                       </Button>
                     ) : (
@@ -232,7 +259,8 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
                 <p>{place?.summary ?? nameAndSource(object!.name).source ?? kindSaid(object!)}</p>
                 {place?.copies ? <p className="note">{place.copies === 1 ? "One copy is in your places." : `${place.copies} copies are in your places.`}</p> : null}
                 <p className="note">{own
-                  ? inStore ? "Anybody on iOcean can copy it into their own objects. Taking it out stops new copies; copies made stay." : "Only your organisation has it. In the store, anybody on iOcean can copy it."
+                  ? inStore ? `Anybody on iOcean can copy it into their own ${place ? "places" : "objects"}. Taking it out stops new copies; copies made stay.`
+                    : `Only your organisation has it. In the store, anybody on iOcean can copy it${place ? ", as it was last published" : ""}.`
                   : "The store's own never changes; a copy is yours to change, and taking it again makes another."}</p>
               </div>
             </div>
@@ -244,12 +272,16 @@ export function Store({ platform, held, packages, onOpenPlace, onOpenVehicle, on
 }
 
 /** A place in the store: its own photograph when it ships one, else its relief. */
-function StoreCard({ one, photo, pkg, onOpen, working }: {
+function StoreCard({ one, photo, pkg, onOpen, working, yours, onlyYours }: {
   one: StorePlace;
   photo: string | undefined;
   pkg: PlacePackage | null | undefined;
   onOpen?: () => void;
   working: boolean;
+  /** Your organisation's, in the store. */
+  yours?: boolean;
+  /** Your organisation's, not in the store yet. */
+  onlyYours?: boolean;
 }): React.JSX.Element {
   const drawn = usePlacePicture(photo !== undefined ? null : pkg);
   const picture = photo ?? drawn ?? undefined;
@@ -262,7 +294,8 @@ function StoreCard({ one, photo, pkg, onOpen, working }: {
             one.surveyedFraction !== undefined ? `${Math.round(one.surveyedFraction * 100)}% measured` : one.surveyed ? "surveyed" : "derived depths",
             one.colonies ? `${one.colonies.toLocaleString()} colonies` : "",
           ].filter(Boolean)}
-          corner={working ? <Status tone="busy">copying</Status> : one.copies ? <Status tone="good">{one.copies === 1 ? "1 copy in your places" : `${one.copies} copies in your places`}</Status>
+          corner={working ? <Status tone="busy">{yours || onlyYours ? "working" : "copying"}</Status>
+            : onlyYours ? <Status>only yours</Status> : yours ? <Status tone="good">yours</Status> : one.copies ? <Status tone="good">{one.copies === 1 ? "1 copy in your places" : `${one.copies} copies in your places`}</Status>
             : one.adopted ? <Status tone="good">in your places</Status> : undefined}
           onOpen={onOpen} />
   );

@@ -69,8 +69,11 @@ type City struct {
 	Discoverable  bool          `json:"discoverable"`
 	// OwnedByOrg is the organisation the place belongs to; empty for the
 	// platform's own catalogue.
-	OwnedByOrg string    `json:"ownedByOrg,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	OwnedByOrg string `json:"ownedByOrg,omitempty"`
+	// InStore says an organisation's place is offered in the store, for any
+	// organisation to copy.
+	InStore   bool      `json:"inStore,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy  string    `json:"createdBy"`
 	// RetiredAt and RetiredBy say the place was taken out of the listings,
 	// when and by whom. It keeps its history and takes no new dives.
@@ -302,7 +305,7 @@ const selectCity = `
 	       coalesce(ST_XMin(extent), 0), coalesce(ST_YMin(extent), 0),
 	       coalesce(ST_XMax(extent), 0), coalesce(ST_YMax(extent), 0),
 	       horizontal_crs, vertical_datum, discoverable, coalesce(owned_by_org, ''),
-	       created_at, created_by, retired_at, coalesce(retired_by, '')
+	       created_at, created_by, retired_at, coalesce(retired_by, ''), in_store
 	FROM catalog.city`
 
 func scanCity(row interface{ Scan(...any) error }) (City, error) {
@@ -310,7 +313,7 @@ func scanCity(row interface{ Scan(...any) error }) (City, error) {
 	err := row.Scan(&place.ID, &place.Slug, &place.Name, &place.Summary,
 		&place.Extent.West, &place.Extent.South, &place.Extent.East, &place.Extent.North,
 		&place.HorizontalCRS, &place.VerticalDatum, &place.Discoverable, &place.OwnedByOrg,
-		&place.CreatedAt, &place.CreatedBy, &place.RetiredAt, &place.RetiredBy)
+		&place.CreatedAt, &place.CreatedBy, &place.RetiredAt, &place.RetiredBy, &place.InStore)
 	return place, err
 }
 
@@ -393,7 +396,7 @@ func (s *Store) UnretireCity(ctx context.Context, conn db.Conn, id string) (City
 }
 
 const catalogueListing = selectCity + `
-		WHERE owned_by_org IS NULL AND discoverable AND retired_at IS NULL ORDER BY name`
+		WHERE retired_at IS NULL AND ((owned_by_org IS NULL AND discoverable) OR in_store) ORDER BY name`
 
 // Catalogue lists the map store: the platform's own places (no organisation
 // owns them) that anybody may find, and that are not retired.
@@ -412,6 +415,35 @@ func (s *Store) Catalogue(ctx context.Context) ([]City, error) {
 		places = append(places, place)
 	}
 	return places, rows.Err()
+}
+
+// OfferCity puts an organisation's place in the store, or takes it out. Only
+// a place with a published package can go in, since a copy is made from it;
+// the platform's own places are in the store by being discoverable.
+func (s *Store) OfferCity(ctx context.Context, conn db.Conn, id string, on bool) error {
+	tag, err := conn.Exec(ctx, `
+		UPDATE catalog.city SET in_store = $2
+		WHERE id = $1 AND owned_by_org IS NOT NULL AND retired_at IS NULL
+		  AND (NOT $2 OR EXISTS (SELECT 1 FROM catalog.version v
+		                         WHERE v.asset_kind = 'city' AND v.asset_id = catalog.city.id
+		                           AND v.published_at IS NOT NULL))`, id, on)
+	if err != nil {
+		return fmt.Errorf("offering %s in the store: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		place, err := s.City(ctx, id)
+		if err != nil {
+			return err
+		}
+		if place.OwnedByOrg == "" {
+			return fmt.Errorf("%w: %s is the store's own place", domain.ErrInvalid, place.Name)
+		}
+		if place.Retired() {
+			return fmt.Errorf("%w: %s is retired", domain.ErrInvalid, place.Name)
+		}
+		return fmt.Errorf("%w: %s has no published package to copy", domain.ErrInvalid, place.Name)
+	}
+	return nil
 }
 
 // ── Vehicles ─────────────────────────────────────────────────────────────────

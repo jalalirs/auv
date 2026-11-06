@@ -289,6 +289,14 @@ func (rt *Router) registerAll() {
 	rt.register(Route{Method: "POST", Pattern: "/api/v1/organisations/{orgId}/cities",
 		Summary: "found a place of the organisation's own, seen only by its members until they share it",
 		Action:  policy.CityFound, Resource: fromPath(policy.ResourceOrg, "orgId"), Handle: d.foundOwnCity})
+	// Offered in the store for any organisation to copy, or taken out: the
+	// same authority as sharing it.
+	rt.register(Route{Method: "PUT", Pattern: "/api/v1/cities/{cityId}/store",
+		Summary: "offer an organisation's place in the store, for any organisation to copy",
+		Action:  policy.CityGrant, Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.offerPlace(true)})
+	rt.register(Route{Method: "DELETE", Pattern: "/api/v1/cities/{cityId}/store",
+		Summary: "take a place out of the store; copies already made stay",
+		Action:  policy.CityGrant, Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.offerPlace(false)})
 	rt.register(Route{Method: "GET", Pattern: "/api/v1/cities/{cityId}/grants",
 		Summary: "who has been granted access to a place", Action: policy.CityGrant,
 		Resource: fromPath(policy.ResourceCity, "cityId"), Handle: d.readCityGrants})

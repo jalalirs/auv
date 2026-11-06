@@ -753,6 +753,10 @@ export class Platform {
   }
 
   /** Offered in the store for any organisation to copy, or taken out of it. */
+  async offerPlace(id: string, on: boolean): Promise<City> {
+    return this.#request<City>(on ? "PUT" : "DELETE", `/api/v1/cities/${id}/store`);
+  }
+
   async offerAsset(id: string, on: boolean): Promise<Asset> {
     return this.#request<Asset>(on ? "PUT" : "DELETE", `/api/v1/assets/${id}/store`);
   }

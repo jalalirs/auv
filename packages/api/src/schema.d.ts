@@ -3892,6 +3892,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cities/{cityId}/store": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Offer this place in the store
+         * @description An organisation's place with a published package, offered for any organisation to copy into its own places. The same authority as sharing it.
+         *
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It is in the store; the place. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["City"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        post?: never;
+        /**
+         * Take this place out of the store
+         * @description Copies already made stay with whoever made them.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The place. */
+                    cityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description It is out of the store; the place. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["City"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assets/{assetId}/store": {
         parameters: {
             query?: never;
@@ -7419,6 +7493,8 @@ export interface components {
             /** @description The organisation the place belongs to, whose members curate it. Absent for the platform's catalogue.
              *      */
             ownedByOrg?: string;
+            /** @description An organisation's place offered in the store, for any organisation to copy. */
+            inStore?: boolean;
             /** Format: date-time */
             createdAt: string;
             createdBy: string;
@@ -8719,6 +8795,8 @@ export interface components {
             copies?: number;
             /** @description How far its middle is from the area's */
             distanceM?: number;
+            /** @description The organisation offering it, when it is not the store's own place; it is copied, never shared in place. */
+            ownedByOrg?: string;
         };
         ControllerBuildBrief: {
             source: {

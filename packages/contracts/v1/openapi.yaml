@@ -2627,6 +2627,52 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v1/cities/{cityId}/store:
+    put:
+      tags: [places]
+      summary: Offer this place in the store
+      description: >
+        An organisation's place with a published package, offered for any
+        organisation to copy into its own places. The same authority as
+        sharing it.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is in the store; the place.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/City' }
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [places]
+      summary: Take this place out of the store
+      description: Copies already made stay with whoever made them.
+      parameters:
+        - name: cityId
+          in: path
+          required: true
+          description: The place.
+          schema: { type: string }
+      responses:
+        '200':
+          description: It is out of the store; the place.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/City' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/assets/{assetId}/store:
     put:
       tags: [places]
@@ -5086,6 +5132,9 @@ components:
           description: >
             The organisation the place belongs to, whose members curate it.
             Absent for the platform's catalogue.
+        inStore:
+          type: boolean
+          description: An organisation's place offered in the store, for any organisation to copy.
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         retiredAt:
@@ -6886,6 +6935,7 @@ components:
         adopted: { type: boolean, description: "One of the caller's organisations took it the old way, as a share of the store's own place." }
         copies: { type: integer, description: How many copies of it the caller's organisations hold. }
         distanceM: { type: number, description: How far its middle is from the area's, when an area was asked about. }
+        ownedByOrg: { type: string, description: "The organisation offering it, when it is not the store's own place; it is copied, never shared in place." }
 
     ControllerBuildBrief:
       type: object

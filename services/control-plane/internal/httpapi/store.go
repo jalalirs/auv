@@ -70,6 +70,15 @@ func (d *Dependencies) adoptStorePlace(w http.ResponseWriter, r *http.Request) {
 	if !d.inStore(w, r, cityID) {
 		return
 	}
+	// An organisation's place in the store is copied: sharing it in place
+	// would hand another organisation the owner's own place.
+	if city, err := d.Catalog.City(r.Context(), cityID); err != nil || city.OwnedByOrg != "" {
+		if err == nil {
+			err = fmt.Errorf("%w: %s is an organisation's place; copy it instead", domain.ErrInvalid, city.Name)
+		}
+		writeError(w, r, err)
+		return
+	}
 	principal, _ := principalOf(r.Context())
 	binding, err := d.recordGrant(r, policy.CityAdopt, "city", policy.GrantSpec{
 		SubjectKind: policy.SubjectOrg, SubjectID: orgID,
@@ -204,4 +213,33 @@ func copySlug(of string) string {
 		of = strings.TrimRight(of[:63-7], "-")
 	}
 	return of + "-" + tail
+}
+
+// offerPlace puts an organisation's place in the store, or takes it out. The
+// copies already made stay theirs.
+func (d *Dependencies) offerPlace(on bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		principal, _ := principalOf(r.Context())
+		id := r.PathValue("cityId")
+		err := d.Pool.InTransaction(r.Context(), func(conn db.Conn) error {
+			if err := d.Catalog.OfferCity(r.Context(), conn, id, on); err != nil {
+				return err
+			}
+			return d.Audit.Record(r.Context(), conn, audit.Event{
+				ActorID: principal.ID, Action: string(policy.CityGrant),
+				SubjectKind: "city", SubjectID: id, Outcome: audit.Succeeded,
+				Detail: map[string]any{"inStore": on},
+			})
+		})
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		city, err := d.Catalog.City(r.Context(), id)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, city)
+	}
 }

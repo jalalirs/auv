@@ -49,6 +49,9 @@ type Place struct {
 	// DistanceM is how far its middle is from the middle of the area asked
 	// about, when one was.
 	DistanceM *float64 `json:"distanceM,omitempty"`
+	// OwnedByOrg is the organisation that offers it, when it is not the
+	// store's own place: it is copied, never shared in place.
+	OwnedByOrg string `json:"ownedByOrg,omitempty"`
 }
 
 // Look is what a version's site.json says that a card shows.
@@ -106,7 +109,7 @@ func (s *Store) Places(ctx context.Context, orgIDs []string, near *Square) ([]Pl
 	places := []Place{}
 	for _, city := range cities {
 		place := Place{ID: city.ID, Slug: city.Slug, Name: city.Name, Summary: city.Summary,
-			Extent: city.Extent, Adopted: held[city.ID], Copies: copies[city.ID]}
+			Extent: city.Extent, Adopted: held[city.ID], Copies: copies[city.ID], OwnedByOrg: city.OwnedByOrg}
 		if near != nil {
 			if !overlaps(city.Extent, *near) {
 				continue
@@ -135,7 +138,7 @@ func (s *Store) Places(ctx context.Context, orgIDs []string, near *Square) ([]Pl
 
 // Listed reports whether a place is in the store.
 func Listed(city catalog.City) bool {
-	return city.OwnedByOrg == "" && city.Discoverable && city.RetiredAt == nil
+	return city.RetiredAt == nil && ((city.OwnedByOrg == "" && city.Discoverable) || city.InStore)
 }
 
 func (s *Store) newest(ctx context.Context, cityID string) (catalog.Version, bool, error) {
