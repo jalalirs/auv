@@ -322,6 +322,9 @@ def test_a_layer_reef_takes_a_partial_world_on_the_reef_it_was_edited_on(tmp_pat
     assert list(c.kind) == ["massive", "fan", "massive"]
     assert "as the world edited them" in c.from_
 
+    turned = {**edits, "items": [{"id": "coral-1", "kind": "coral", "x": 0.0004, "y": 0.0, "sizeM": 0.6,
+                                  "headingDeg": 30, "form": "massive", "builtDeg": 0, "built": True}]}
+    assert as_edited(described, turned, tmp_path)["reef"]["layerEdits"]["moved"] == {0: {"headingDeg": 30.0}}
     by_package = {k: v for k, v in edits.items() if k != "digest"} | {"package": digest}
     assert as_edited(described, by_package, tmp_path)["reef"]["editedBy"]["moved"] == 1
     palette = {**edits, "items": [{"id": "coral-new-2", "kind": "coral", "form": "fan", "x": 5.0, "y": 5.0, "sizeM": 0.5}]}

@@ -316,6 +316,15 @@ def _layer_edited(reef: dict, edits: dict, city) -> dict:
                 hidden.add(i)
                 continue
             change = {k: float(item[k]) for k in ("x", "y", "sizeM", "headingDeg") if item.get(k) is not None}
+            # The editor saves the whole item; what is as built is not a change,
+            # and a colony only turned stays standing where it was built.
+            if np.hypot(change.get("x", columns["x"][i]) - columns["x"][i],
+                        change.get("y", columns["y"][i]) - columns["y"][i]) < 0.01:
+                change.pop("x", None), change.pop("y", None)
+            if abs(change.get("sizeM", columns["sizeM"][i]) / max(1e-6, float(columns["sizeM"][i])) - 1.0) < 0.005:
+                change.pop("sizeM", None)
+            if abs(change.get("headingDeg", 0.0)) < 1e-6:
+                change.pop("headingDeg", None)
             if change:
                 moved[i] = change
             continue
