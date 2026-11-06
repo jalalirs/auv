@@ -20,7 +20,9 @@ import type { Asset, Mapping, Mission, Platform } from "@coral-city/api";
 import type { Held, Packages } from "./Deck.js";
 import { AssetBrowser } from "../parts/AssetBrowser.js";
 import { Outliner } from "../parts/Outliner.js";
+import { extentOf, hullOf, launchAt, legsOf, type Drawn, type Plan } from "../catalog/stages.js";
 import { groundAt, groundOf, type Ground } from "../parts/SiteChart.js";
+import type { PlanIn3D } from "../parts/StagesIn3D.js";
 import { World3D, type Delta, type Glass, type Mode, type Shown, type View3D, type ViewName } from "../parts/World3D.js";
 import { whereIs } from "../platform/packages.js";
 import {
@@ -448,6 +450,31 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
     return undefined;
   }, [inHand, hover, viewMode, ground]);
 
+  // A mission chosen in the scene: its work drawn in the world, as last saved.
+  const missionChosen = selected.length === 1 && selected[0]!.startsWith("@mission:") ? selected[0]!.slice("@mission:".length) : undefined;
+  const [missionPlan, setMissionPlan] = useState<Plan | undefined>();
+  useEffect(() => {
+    setMissionPlan(undefined);
+    if (!missionChosen) return;
+    let stale = false;
+    void platform.versionsOfMission(missionChosen).then((versions) => {
+      const said = versions[0]?.document as Plan | undefined;
+      if (!stale && said) setMissionPlan({ ...said, stages: said.stages ?? [] });
+    }).catch(() => undefined);
+    return () => { stale = true; };
+  }, [platform, missionChosen]);
+  const planShown = useMemo((): PlanIn3D | undefined => {
+    if (!missionPlan || !document) return undefined;
+    const drawn = ((layerOf(document, "structures")?.items ?? []).filter((t) => t.kind !== "object")) as unknown as Drawn[];
+    const begin = pkg?.site?.beginAt;
+    const launch = launchAt(missionPlan, drawn, { x: Number(begin?.[0] ?? 0), y: Number(begin?.[1] ?? 0) });
+    return { stages: missionPlan.stages, legs: legsOf(missionPlan.stages, drawn, launch, hullOf(undefined)), drawn, launch };
+  }, [missionPlan, document, pkg]);
+  // Chosen, it is looked at.
+  useEffect(() => {
+    if (planShown?.stages.length) view.current?.frameOn([planShown.launch, ...extentOf(planShown.stages, planShown.drawn, planShown.legs)]);
+  }, [missionPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ------------------------------------------------------------ saving
 
   const unlaid = [...all.values()].filter((t) => (t.kind === "object" || t.kind === "reef") && !t.laid && typeof t.asset === "string" && t.asset);
@@ -614,7 +641,7 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
           <div className="wed-view" onDoubleClick={finishRoute}>
             {ground && document ? (
               <World3D ground={ground} glass={glass} items={shown} selected={selected} mode={viewMode} snap={snap} grid={grid}
-                       ghost={ghost} measure={viewMode === "measure" ? measure : undefined}
+                       ghost={ghost} measure={viewMode === "measure" ? measure : undefined} plan={planShown}
                        brush={viewMode === "scatter" && hover ? { ...hover, radiusM: scatter.radiusM } : undefined}
                        showing={{ terrain: visible("terrain"), water: visible("water"), structures: visible("structures"), reef: visible("reef") }}
                        api={view} onPick={pick} onSelect={select} onHover={setHover} onDrop={drop}

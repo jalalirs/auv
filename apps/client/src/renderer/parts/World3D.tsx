@@ -16,8 +16,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { ViewHelper } from "three/examples/jsm/helpers/ViewHelper.js";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import type { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 
 import { groundAt, type Ground } from "./SiteChart.js";
+import { stagesInto, type PlanIn3D } from "./StagesIn3D.js";
 
 /** Something drawn in the world: an item of its reef or its structures. */
 export interface Shown {
@@ -58,6 +61,8 @@ export interface View3D {
   view: (which: ViewName) => void;
   /** Frame these items, or the whole world when none. */
   frame: (ids: string[]) => void;
+  /** Frame these points of the world, from the ground under them to the surface. */
+  frameOn: (points: { x: number; y: number }[]) => void;
 }
 
 /** A tank's inside, as its site record says: the water is kept within glass,
@@ -153,8 +158,8 @@ const COLOURS: Record<string, number> = {
 const CHOSEN = 0xff8a3d;
 const SURFACE = new Set(["ship", "buoy", "dredger"]);
 
-export function World3D({ ground, glass, items, showing, selected, mode, snap, grid, ghost, brush, measure, api,
-                          onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop }: {
+export function World3D({ ground, glass, items, showing, selected, mode, snap, grid, ghost, brush, measure, plan, api,
+                          onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle }: {
   ground: Ground;
   /** A tank: drawn as its glass and the water in it, the ground cut to it. */
   glass?: Glass;
@@ -171,9 +176,12 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
   brush?: { x: number; y: number; radiusM: number };
   /** A tape between two points on the ground. */
   measure?: { x: number; y: number }[];
+  /** A mission's work, drawn at the heights it is flown. */
+  plan?: PlanIn3D;
   api?: React.Ref<View3D>;
-  /** A click on the ground with something in hand, a brush or a tape. */
-  onPick: (at: { x: number; y: number }, how: { shift: boolean }) => void;
+  /** A click on the ground with something in hand, a brush or a tape; and
+   *  which of a plan's stages was clicked, if one was. */
+  onPick: (at: { x: number; y: number }, how: { shift: boolean; stage?: number }) => void;
   onSelect: (ids: string[], how: "replace" | "add" | "toggle") => void;
   onTransformStart: () => void;
   onTransform: (delta: Delta) => void;
@@ -181,19 +189,23 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
   onHover?: (at: { x: number; y: number } | undefined) => void;
   /** Something dragged in from the asset browser and let go over the ground. */
   onDrop?: (key: string, at: { x: number; y: number }) => void;
+  /** A point of the chosen stage taken hold of, dragged over the ground and let go. */
+  onHandle?: (k: number, at: { x: number; y: number }, phase: "start" | "move" | "end") => void;
 }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera;
     controls: OrbitControls; gizmo: TransformControls; proxy: THREE.Object3D;
     terrain: THREE.Mesh; water: THREE.Object3D; things: THREE.Group; corals: THREE.Group; marks: THREE.Group;
-    overlay: THREE.Group; grid: THREE.Object3D; lift: number;
+    overlay: THREE.Group; plan: THREE.Group; grid: THREE.Object3D; lift: number;
+    /** The drawing's size in pixels, which fat lines are drawn to. */
+    resolution: THREE.Vector2;
     /** Where each item is in the scene, and how big, for framing and boxes. */
     where: Map<string, { at: THREE.Vector3; r: number }>;
     dragging: boolean;
   } | undefined>(undefined);
-  const said = useRef({ onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, selected, mode, items });
-  said.current = { onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, selected, mode, items };
+  const said = useRef({ onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle, selected, mode, items, plan });
+  said.current = { onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle, selected, mode, items, plan };
 
   useImperativeHandle(api, () => ({
     view: (which) => {
@@ -217,15 +229,30 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
         if (w) box.expandByPoint(w.at.clone().addScalar(w.r)).expandByPoint(w.at.clone().addScalar(-w.r));
       }
       if (box.isEmpty()) box.setFromObject(s.terrain);
-      const centre = box.getCenter(new THREE.Vector3());
-      const size = Math.max(box.getSize(new THREE.Vector3()).length() / 2, ground.acrossM / 400);
-      const far = size / Math.sin((s.camera.fov * Math.PI) / 360) * 2;
-      const dir = s.camera.position.clone().sub(s.controls.target).normalize();
-      s.controls.target.copy(centre);
-      s.camera.position.copy(centre).addScaledVector(dir, far);
-      s.controls.update();
+      aim(s, box);
+    },
+    frameOn: (points) => {
+      const s = scene.current;
+      if (!s || !points.length) return;
+      const box = new THREE.Box3();
+      for (const p of points) {
+        box.expandByPoint(new THREE.Vector3(p.x, floor(ground, p.x, p.y, s.lift), -p.y));
+        box.expandByPoint(new THREE.Vector3(p.x, 0, -p.y));
+      }
+      aim(s, box);
     },
   }), [ground]);
+
+  /** The camera on a box, from the side it looks from now. */
+  const aim = (s: NonNullable<typeof scene.current>, box: THREE.Box3) => {
+    const centre = box.getCenter(new THREE.Vector3());
+    const size = Math.max(box.getSize(new THREE.Vector3()).length() / 2, ground.acrossM / 400);
+    const far = size / Math.sin((s.camera.fov * Math.PI) / 360) * 2;
+    const dir = s.camera.position.clone().sub(s.controls.target).normalize();
+    s.controls.target.copy(centre);
+    s.camera.position.copy(centre).addScaledVector(dir, far);
+    s.controls.update();
+  };
 
   // The scene, once per ground.
   useEffect(() => {
@@ -312,7 +339,8 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     const corals = new THREE.Group();
     const marks = new THREE.Group();
     const overlay = new THREE.Group();
-    world.add(things, corals, marks, overlay);
+    const planned = new THREE.Group();
+    world.add(things, corals, marks, overlay, planned);
 
     // The gizmo holds a stand-in at the middle of the selection; what it does
     // to the stand-in is said to the editor as a change from where it began.
@@ -347,14 +375,17 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     helper.setLabels("E", "Up", "S");
     helper.center = controls.target;
 
+    const resolution = new THREE.Vector2(1, 1);
     scene.current = { renderer, scene: world, camera, controls, gizmo, proxy, terrain, water, things, corals, marks, overlay,
-                      grid: gridLines, lift, where: new Map(), dragging: false };
+                      plan: planned, grid: gridLines, lift, resolution, where: new Map(), dragging: false };
 
     const fit = () => {
       const w = el.clientWidth || 1, h = el.clientHeight || 1;
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      resolution.set(w, h);
+      planned.traverse((o) => { if (o instanceof Line2) (o.material as LineMaterial).resolution.set(w, h); });
     };
     fit();
     const watching = new ResizeObserver(fit);
@@ -390,12 +421,32 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     let boxing: { x: number; y: number } | undefined;
     let grabbing: { x: number; y: number } | undefined;
     let downAt: { x: number; y: number } | undefined;
+    let holding: number | undefined;
+    // The plan's mark under the pointer: a stage, and a handle of the chosen one.
+    const hitPlan = (): { stage?: number; handle?: number } | undefined => {
+      for (const hit of ray.intersectObjects(planned.children, false)) {
+        const data = hit.object.userData as { stage?: number; handle?: number };
+        if (data.handle !== undefined) return data;
+      }
+      const hit = ray.intersectObjects(planned.children, false).find((h) => h.object.userData.stage !== undefined);
+      return hit ? hit.object.userData as { stage?: number } : undefined;
+    };
     const transforms = () => ["select", "move", "rotate", "scale"].includes(said.current.mode);
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
       downAt = { x: event.clientX, y: event.clientY };
       if (gizmo.dragging || gizmo.axis) return;
       cast(event);
+      if (said.current.plan?.editing && said.current.onHandle) {
+        const handle = hitPlan()?.handle, at = onGround();
+        if (handle !== undefined && at) {
+          holding = handle;
+          controls.enabled = false;
+          renderer.domElement.setPointerCapture(event.pointerId);
+          said.current.onHandle(handle, at, "start");
+          return;
+        }
+      }
       if (!transforms()) return;
       const id = hitItem();
       if (event.shiftKey && !id) {
@@ -419,6 +470,11 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
       cast(event);
       const at = onGround();
       said.current.onHover?.(at);
+      if (holding !== undefined) {
+        if (at) said.current.onHandle?.(holding, at, "move");
+        return;
+      }
+      if (said.current.plan?.editing) renderer.domElement.style.cursor = hitPlan()?.handle !== undefined ? "grab" : "";
       if (boxing) {
         const r = el.getBoundingClientRect();
         const x0 = Math.min(boxing.x, event.clientX) - r.left, y0 = Math.min(boxing.y, event.clientY) - r.top;
@@ -431,6 +487,16 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
       if (event.button !== 0) return;
       const still = downAt && Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) <= 4;
       downAt = undefined;
+      if (holding !== undefined) {
+        const k = holding;
+        holding = undefined;
+        controls.enabled = true;
+        cast(event);
+        const at = onGround();
+        if (at) said.current.onHandle?.(k, at, "end");
+        else said.current.onHandle?.(k, { x: NaN, y: NaN }, "end");
+        return;
+      }
       if (boxing) {
         const r = renderer.domElement.getBoundingClientRect();
         const x0 = Math.min(boxing.x, event.clientX), x1 = Math.max(boxing.x, event.clientX);
@@ -460,7 +526,8 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
       cast(event);
       if (!transforms()) {
         const at = onGround();
-        if (at) said.current.onPick(at, { shift: event.shiftKey });
+        const stage = said.current.plan ? hitPlan()?.stage : undefined;
+        if (at) said.current.onPick(at, { shift: event.shiftKey, ...(stage !== undefined ? { stage } : {}) });
         return;
       }
       const id = hitItem();
@@ -587,6 +654,14 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
   }, [items, selected, mode, snap, ground]);
 
   useEffect(() => { if (scene.current) scene.current.grid.visible = grid; }, [grid, ground, glass]);
+
+  // The mission, drawn again whenever it changes.
+  useEffect(() => {
+    const s = scene.current;
+    if (!s) return;
+    emptied(s.plan);
+    if (plan) stagesInto(s.plan, plan, { floor: (x, y) => floor(ground, x, y, s.lift), lift: s.lift, acrossM: ground.acrossM, resolution: s.resolution });
+  }, [plan, ground, glass]);
 
   // What is in hand, the brush and the tape.
   useEffect(() => {

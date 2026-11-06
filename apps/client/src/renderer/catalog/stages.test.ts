@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { driftRisks, drawnInto, FINS, geometryOf, legsOf, pilotOf, PURSUE, snap, wattsOf, type Hull, type Stage } from "./stages.js";
+import { box, driftRisks, drawnInto, FINS, geometryOf, handleMoved, handlesOf, legsOf, pilotOf, PURSUE, snap, wattsOf, type Hull, type Stage } from "./stages.js";
 
 const launch = { x: 0, y: 0 };
 
@@ -109,5 +109,21 @@ describe("a vehicle steered by fins", () => {
     const flyS = legs.reduce((s, l) => s + l.flyS, 0);
     expect(flyS).toBeGreaterThan(250);
     expect(flyS).toBeLessThan(420);
+  });
+});
+
+describe("taking hold of a drawn stage", () => {
+  it("moves one point of a route and keeps its depth", () => {
+    const stage = { kind: "waypoints", points: [{ x: 0, y: 0, depthM: 5 }, { x: 10, y: 0, depthM: 5 }] };
+    expect(handlesOf(stage)).toHaveLength(2);
+    expect(handleMoved(stage, 1, { x: 12, y: 3 })["points"]).toEqual([{ x: 0, y: 0, depthM: 5 }, { x: 12, y: 3, depthM: 5 }]);
+  });
+  it("moves an area's corner and keeps the one across from it", () => {
+    const stage = { kind: "survey", area: box([{ x: 0, y: 0 }, { x: 10, y: 5 }]) };
+    const moved = handleMoved(stage, 2, { x: 20, y: 8 });
+    expect(moved["area"]).toEqual(box([{ x: 0, y: 0 }, { x: 20, y: 8 }]));
+  });
+  it("has nothing to take hold of over a laid thing", () => {
+    expect(handlesOf({ kind: "survey", over: "frame-1" })).toEqual([]);
   });
 });

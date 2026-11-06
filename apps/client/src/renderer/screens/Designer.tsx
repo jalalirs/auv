@@ -1,43 +1,38 @@
-// A plan of work, on its place's chart.
+// A plan of work, in its world.
 //
 // A mission is a place, the arrangement it was planned over, and the work in
 // order. It used to be written as a list with nothing to look at: a survey was
 // "sixty by thirty metres ahead of wherever the vehicle begins", and where that
 // fell on the reef was found out by flying it. Here every stage is drawn where
-// it happens — the route as clicked points, a survey as the rectangle it
-// covers, a transect as its line, an inspection as a ring round what is
-// inspected — in the place's own frame, which is the frame the runtime flies a
-// drawn stage in.
+// it happens, in the world in three dimensions and at the height it is flown —
+// the route as clicked points at its depth, a survey as the rectangle it
+// covers and its lanes over the ground, a transect as its line, an inspection
+// as a ring round what is inspected — in the place's own frame, which is the
+// frame the runtime flies a drawn stage in. The chosen stage's points are
+// taken hold of and dragged.
 //
 // It opens to read. Editing is a choice, and every save is a new version:
 // runs pin a version, and a result has to keep meaning what it meant.
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AssetVersion, Mission, Platform } from "@coral-city/api";
 
 import { TASKS, type Task } from "../catalog/tasks.js";
 import {
-  drawMode, drawnInto, drawPrompt, extentOf, floorWatts, geometryOf, hullOf, legsOf, pilotOf, settledMs, snap, wattsOf,
-  type Drawn, type P, type Stage,
+  drawMode, drawnInto, drawPrompt, extentOf, floorWatts, geometryOf, handleMoved, hullOf, launchAt, legsOf, pilotOf,
+  settledMs, snap, wattsOf, type Drawn, type P, type Plan, type Stage,
 } from "../catalog/stages.js";
-import { centreOf, groundOf, SiteChart, type Frame, type Ground, type Thing } from "../parts/SiteChart.js";
-import { drawStages } from "../parts/StagesLayer.js";
+import { centreOf, groundAt, groundOf, type Ground, type Thing } from "../parts/SiteChart.js";
+import type { PlanIn3D } from "../parts/StagesIn3D.js";
 import { TaskArt } from "../parts/TaskArt.js";
+import { World3D, type Glass, type Shown, type View3D, type ViewName } from "../parts/World3D.js";
 import { newestOf } from "../platform/packages.js";
+import { itemsOf } from "../platform/scene.js";
 import { layerOf, readWorld, type WorldOf } from "../platform/world.js";
 import type { Held, Packages } from "./Deck.js";
 import { Empty, PageHead, Pill } from "./parts.js";
 import "../parts/world.css";
-
-/** What a plan of work says. */
-interface Plan {
-  cityVersionId?: string;
-  layoutVersionId?: string;
-  /** Where the vehicle goes in: a drawn thing, or a point. */
-  launch?: { from?: string; x?: number; y?: number };
-  stages: Stage[];
-}
 
 const STAGES: Task[] = TASKS.filter((one) => one.unavailable === undefined && one.key !== "mission");
 
@@ -66,14 +61,6 @@ function minutes(seconds: number): string {
   if (seconds < 90) return `${Math.round(seconds)} s`;
   if (seconds < 5400) return `${Math.round(seconds / 60)} min`;
   return `${(seconds / 3600).toFixed(1)} h`;
-}
-
-/** Where the dive begins, on the chart. */
-function launchAt(plan: Plan, things: Drawn[], fallback: P): P {
-  const named = plan.launch?.from ? things.find((t) => t.id === plan.launch!.from) : undefined;
-  if (named) return { x: named.x, y: named.y };
-  if (typeof plan.launch?.x === "number" && typeof plan.launch?.y === "number") return { x: plan.launch.x, y: plan.launch.y };
-  return fallback;
 }
 
 export function Designer({ platform, held, packages, mission, place, onBack, onFly, onMade }: {
@@ -111,6 +98,13 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
 
   const pkg = packages.places.get(place) ?? undefined;
   useEffect(() => { void groundOf(pkg).then(setGround); }, [pkg]);
+  const glass = useMemo(() => {
+    const site = pkg?.site as unknown as { enclosed?: boolean; interior?: Glass } | undefined;
+    return site?.enclosed && site.interior ? site.interior : undefined;
+  }, [pkg]);
+  const view = useRef<View3D>(null);
+  // A point of the chosen stage in hand: the stage as it was when taken hold of.
+  const holding = useRef<Stage | undefined>(undefined);
 
   useEffect(() => {
     let stale = false;
@@ -173,11 +167,15 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
   // reading, so a stage points at what was there; the newest when editing,
   // which is what a save pins.
   const pinnedVersion = worldVersions.find((v) => v.id === plan.layoutVersionId);
+  const inWorld = (editing || !pinnedVersion ? world?.document : pinnedVersion.document) as WorldOf["document"] | undefined;
   const things: Thing[] = useMemo(() => {
-    const document = (editing || !pinnedVersion ? world?.document : pinnedVersion.document) as WorldOf["document"] | undefined;
-    const items = (document && layerOf(document, "structures")?.items) ?? [];
+    const items = (inWorld && layerOf(inWorld, "structures")?.items) ?? [];
     return items.filter((t) => t.kind !== "object") as unknown as Thing[];
-  }, [world, pinnedVersion, editing]);
+  }, [inWorld]);
+  // Everything in the world, drawn as the world's editor draws it.
+  const shown = useMemo((): Shown[] => [...itemsOf(inWorld).values()]
+    .filter((t) => !t.hidden && (typeof t.x === "number" || t.route || t.ends || t.corners))
+    .map((t) => ({ ...(t as unknown as Shown), x: Number(t.x ?? 0), y: Number(t.y ?? 0) })), [inWorld]);
   const worldMoved = pinnedVersion !== undefined && world?.version !== undefined && pinnedVersion.id !== world.version.id;
   const drawn: Drawn[] = things as unknown as Drawn[];
 
@@ -265,21 +263,30 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
     setDrawing(clicks);
   }, [acrossM, placingLaunch, drawing, legs, mode, finishDrawing, at, drawn, chosen, setStage]);
 
-  // The plan over the chart: the transit between stages dashed, each stage
-  // drawn as what it is, the chosen one in the vehicle's colour, numbered.
-  const overlay = useCallback((g: CanvasRenderingContext2D, frame: Frame) => {
-    drawStages(g, frame, plan.stages, legs, drawn, chosen, launch);
-    const { toX, toY } = frame;
+  // The plan in the world.
+  const in3D = useMemo((): PlanIn3D => ({ stages: plan.stages, legs, drawn, chosen, launch, drawing, editing }),
+    [plan.stages, legs, drawn, chosen, launch.x, launch.y, drawing, editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // What is being drawn, before it is finished.
-    if (drawing?.length) {
-      g.strokeStyle = "#f0a84f"; g.fillStyle = "#f0a84f"; g.lineWidth = 2; g.setLineDash([2, 3]);
-      g.beginPath();
-      drawing.forEach((p, k) => (k === 0 ? g.moveTo(toX(p.x), toY(p.y)) : g.lineTo(toX(p.x), toY(p.y))));
-      g.stroke(); g.setLineDash([]);
-      drawing.forEach((p) => { g.beginPath(); g.arc(toX(p.x), toY(p.y), 4, 0, Math.PI * 2); g.fill(); });
-    }
-  }, [plan.stages, legs, drawn, chosen, drawing, launch.x, launch.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A point of the chosen stage dragged over the ground: from where the stage
+  // was when it was taken hold of, so a corner dragged past the one across
+  // from it is still that corner.
+  const handle = useCallback((k: number, where: P, phase: "start" | "move" | "end") => {
+    if (at === undefined) return;
+    if (phase === "start") holding.current = at;
+    const base = holding.current ?? at;
+    if (Number.isFinite(where.x)) setStage(chosen, handleMoved(base, k, { x: snap(where.x, acrossM), y: snap(where.y, acrossM) }));
+    if (phase === "end") holding.current = undefined;
+  }, [at, chosen, acrossM, setStage]);
+
+  // Open on the work, or on the world when there is none yet; once for each
+  // ground the view is made for.
+  const framed = useRef<Ground | undefined>(undefined);
+  useEffect(() => {
+    if (!ground || framed.current === ground || (plan.stages.length === 0 && things.length === 0)) return;
+    framed.current = ground;
+    const points = plan.stages.length ? extentOf(plan.stages, drawn, legs) : things.map(centreOf);
+    view.current?.frameOn(points);
+  }, [ground, plan.stages.length, things.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useCallback(async () => {
     const pinned = world?.version;
@@ -339,9 +346,9 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
                 {drawn.filter((one) => LAUNCHES.has(one.kind)).map((one) => (
                   <option key={one.id} value={one.id}>{one.kind} · {one.id.slice(0, 18)}</option>
                 ))}
-                <option value="@">a point on the chart…</option>
+                <option value="@">a point in the world…</option>
               </select>
-              {placingLaunch ? <p className="hint">click the chart where it goes in</p> : null}
+              {placingLaunch ? <p className="hint">click the ground where it goes in</p> : null}
             </>
           ) : <p className="said">{plan.launch?.from ? plan.launch.from : plan.launch?.x !== undefined ? `${plan.launch.x}, ${plan.launch.y}` : "where the place says"}</p>}
 
@@ -364,32 +371,46 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
           ) : null}
         </div>
 
-        <div className="chart">
-          <SiteChart ground={ground} things={things} faintThings overlay={overlay} redraw={plan} key={mission}
-                     fit={plan.stages.length ? extentOf(plan.stages, drawn, legs) : things.map(centreOf)}
-                     cursor={drawing !== undefined || placingLaunch ? "crosshair" : "default"}
-                     onPick={(where) => pick(where)}
-                     onDoublePick={() => { if (drawing !== undefined && mode === "route") finishDrawing(drawing); }}
-                     onHover={(_, depth) => setUnder(depth)} />
+        <div className={drawing !== undefined || placingLaunch ? "chart drawing" : "chart"}
+             onDoubleClick={() => { if (drawing !== undefined && mode === "route") finishDrawing(drawing); }}>
+          {ground ? (
+            <World3D ground={ground} glass={glass} items={shown} selected={[]} mode="place" snap={false} grid={false}
+                     showing={{ terrain: true, water: true, structures: true, reef: true }} plan={in3D} api={view}
+                     onPick={(where, how) => {
+                       if (how.stage !== undefined && drawing === undefined && !placingLaunch) setChosen(how.stage);
+                       else pick(where);
+                     }}
+                     onSelect={() => undefined} onTransformStart={() => undefined} onTransform={() => undefined} onTransformEnd={() => undefined}
+                     onHover={(where) => setUnder(where ? groundAt(ground, where.x, where.y) : undefined)}
+                     onHandle={editing ? handle : undefined} />
+          ) : null}
+          <div className="views">
+            {(["top", "persp"] as ViewName[]).map((one) => (
+              <button key={one} type="button" className="quiet" onClick={() => view.current?.view(one)}>{one === "top" ? "Top" : "3D"}</button>
+            ))}
+            <button type="button" className="quiet"
+                    onClick={() => view.current?.frameOn(plan.stages.length ? extentOf(plan.stages, drawn, legs) : things.map(centreOf))}>Frame</button>
+          </div>
           <div className="readout">
             <span>ground <b>{under === undefined ? "—" : `${under.toFixed(acrossM < 20 ? 2 : 1)} m`}</b></span>
             <span className="resolves">
               {placingLaunch ? "click where it goes in"
                 : drawing !== undefined && at?.kind === "inspect" ? "click the thing to inspect"
                 : drawing !== undefined && at ? drawPrompt(at.kind, drawing.length)
-                : editing ? "choose a stage, then Draw it" : "reading — Edit to change it"}
+                : editing ? (at && drawMode(at.kind) !== "none" ? "drag the stage's points, or Draw it again" : "choose a stage, then Draw it")
+                : "reading — Edit to change it"}
             </span>
             {drawing !== undefined && mode === "route" && drawing.length > 0 ? (
               <button type="button" className="finish" onClick={() => finishDrawing(drawing)}>Done</button>
             ) : null}
           </div>
-          {ground === undefined ? <p className="no-chart">This place&rsquo;s chart is still loading, or its package has no seabed.</p> : null}
+          {ground === undefined ? <p className="no-chart">This world&rsquo;s terrain is still loading, or its package has no seabed.</p> : null}
         </div>
 
         <div className="stages">
           <h3>The work, in order</h3>
           {plan.stages.length === 0 ? (
-            <p className="quiet">{editing ? "No stages yet: add one on the left, then draw it on the chart." : "Nothing planned yet. Edit to add stages."}</p>
+            <p className="quiet">{editing ? "No stages yet: add one on the left, then draw it in the world." : "Nothing planned yet. Edit to add stages."}</p>
           ) : plan.stages.map((one, i) => {
             const leg = legs[i];
             const geo = leg ? geometryOf(one, drawn, leg.from) : undefined;
@@ -399,7 +420,7 @@ export function Designer({ platform, held, packages, mission, place, onBack, onF
                 <span className="what">
                   <strong>{nameOf(one.kind)}</strong>
                   <small>
-                    {one.over ? `over ${one.over.slice(0, 22)}` : geo?.drawn ? "drawn on the chart" : drawMode(one.kind) === "none" ? "where it is" : "not drawn yet"}
+                    {one.over ? `over ${one.over.slice(0, 22)}` : geo?.drawn ? "drawn in the world" : drawMode(one.kind) === "none" ? "where it is" : "not drawn yet"}
                     {leg ? ` · ${leg.metres < 1000 ? `${leg.metres.toFixed(leg.metres < 10 ? 1 : 0)} m` : `${(leg.metres / 1000).toFixed(1)} km`} · ${minutes(leg.flyS)}` : ""}
                     {/* The runtime stops a stage at its allowance, unfinished. */}
                     {leg && leg.flyS > leg.allowS ? <span className="warn"> — stopped at {minutes(leg.allowS)}</span> : null}

@@ -430,3 +430,73 @@ export function snap(v: number, acrossM: number): number {
   const step = 10 ** Math.floor(Math.log10(Math.max(1e-3, acrossM / 500)));
   return Math.round(v / step) * step;
 }
+
+/** What a plan of work says. */
+export interface Plan {
+  cityVersionId?: string;
+  layoutVersionId?: string;
+  /** Where the vehicle goes in: a drawn thing, or a point. */
+  launch?: { from?: string; x?: number; y?: number };
+  stages: Stage[];
+}
+
+/** Where the dive begins. */
+export function launchAt(plan: Plan, things: Drawn[], fallback: P): P {
+  const named = plan.launch?.from ? things.find((t) => t.id === plan.launch!.from) : undefined;
+  if (named) return { x: named.x, y: named.y };
+  if (typeof plan.launch?.x === "number" && typeof plan.launch?.y === "number") return { x: plan.launch.x, y: plan.launch.y };
+  return fallback;
+}
+
+/** The points of a drawn stage that can be taken hold of and moved: a route's
+ *  points, a line's two ends, an area's four corners, a point. None for a
+ *  stage that is over something laid out, or not drawn: it has no points of
+ *  its own. */
+export function handlesOf(stage: Stage): P[] {
+  const shape = SHAPES[stage.kind];
+  if (!shape || stage.over) return [];
+  switch (shape.mode) {
+    case "route": return ((stage[shape.field!] as unknown[] | undefined) ?? []).filter(isP);
+    case "line": return isP(stage["from"]) && isP(stage["to"]) ? [stage["from"], stage["to"]] : [];
+    case "area": {
+      const area = (stage["area"] as unknown[] | undefined)?.filter(isP);
+      return area && area.length >= 2 ? box(area) : [];
+    }
+    case "point": return isP(stage[shape.field!]) ? [stage[shape.field!] as P] : [];
+    default: return [];
+  }
+}
+
+/** The stage with its handle k moved to `to`. An area's corner moves and the
+ *  corner across from it stays. */
+export function handleMoved(stage: Stage, k: number, to: P): Stage {
+  const shape = SHAPES[stage.kind];
+  const handles = handlesOf(stage);
+  if (!shape || k < 0 || k >= handles.length) return stage;
+  const out: Stage = { ...stage };
+  switch (shape.mode) {
+    case "route":
+      out[shape.field!] = ((stage[shape.field!] as unknown[]) ?? []).filter(isP)
+        .map((p, i) => (i === k ? { ...p, x: to.x, y: to.y } : p));
+      break;
+    case "line":
+      out[k === 0 ? "from" : "to"] = { x: to.x, y: to.y };
+      break;
+    case "area":
+      out["area"] = box([handles[(k + 2) % 4]!, to]);
+      break;
+    case "point":
+      out[shape.field!] = { x: to.x, y: to.y };
+      break;
+  }
+  return out;
+}
+
+/** How high a stage is flown: at a depth below the surface, or at an altitude
+ *  over the ground. A route gives its depth; a line, an area and a patch their
+ *  altitude; anything else is drawn two metres over the ground. */
+export function heightOf(stage: Stage): { depthM: number } | { altitudeM: number } {
+  if (typeof stage["depthM"] === "number") return { depthM: stage["depthM"] as number };
+  if (typeof stage["altitudeM"] === "number") return { altitudeM: stage["altitudeM"] as number };
+  return { altitudeM: 2 };
+}
