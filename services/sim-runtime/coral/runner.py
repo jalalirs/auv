@@ -3287,13 +3287,22 @@ class Dive:
         from systems.coral import as_edited, colonies_of
         # The world's reef layer, where the dive was given one: the colonies
         # as the person who designed the place left them.
-        described = as_edited(described, self.brief.get("colonies"))
+        described = as_edited(described, self.brief.get("colonies"), city)
         reef = described.get("reef") or {}
         self.ocean.replace("coral", colonies_of(described, bottom_under, city))
         if len(self.ocean.coral):
             self.say("coral_is", colonies=len(self.ocean.coral),
                      solid=int(self.ocean.coral.solid().sum()), from_=self.ocean.coral.from_)
-        if reef.get("editedBy"):
+        if reef.get("layerEdits"):
+            drawn = {}
+            if getattr(self, "stage", None) is not None and self.up_axis == "Z":
+                from draw import coral as drawn_coral
+                drawn = drawn_coral.layer_edited(self.stage, reef["layerEdits"], bottom_under, self.units_per_metre)
+                if getattr(self, "_rooted", None) is not None:
+                    # The sway copied the orientations once; copy the edited ones.
+                    self._rooted = self._root_the_gorgonians(self.stage, city)
+            self.say("coral_as_the_world_says", **reef["editedBy"], drawn=drawn)
+        elif reef.get("editedBy"):
             drawn = {}
             if getattr(self, "stage", None) is not None and self.up_axis == "Z":
                 from draw import coral as drawn_coral

@@ -191,7 +191,7 @@ class Colonies:
                                    for i in worst]}
 
 
-def as_edited(described: dict, edits) -> dict:
+def as_edited(described: dict, edits, city=None) -> dict:
     """The place's colonies as its world says they are now.
 
     `edits` is the world's reef layer, as the claim hands it over: the coral
@@ -210,6 +210,8 @@ def as_edited(described: dict, edits) -> dict:
         return described
     reef = dict(described.get("reef") or {})
     rows = reef.get("colonies_at") or []
+    if not rows and isinstance(edits, dict) and edits.get("partial"):
+        return {**described, "reef": _layer_edited(reef, edits, city)}
     if not rows:
         if items:
             reef["editsNotTaken"] = ("the place draws its reef as a layer and lists no colonies, "
@@ -253,6 +255,122 @@ def as_edited(described: dict, edits) -> dict:
     return {**described, "reef": reef}
 
 
+def read_colonies(path) -> tuple[dict, dict]:
+    """The header and columns of a place's colonies file (tools/reef.py
+    write_colonies): row i is instance i of the reef layer, coral-<i+1>."""
+    import json
+    import struct
+
+    data = pathlib.Path(path).read_bytes()
+    if data[:4] != b"ICOL":
+        raise ValueError(f"{path} is not a colonies file")
+    (length,) = struct.unpack("<I", data[4:8])
+    header = json.loads(data[8:8 + length])
+    n, at = int(header["count"]), 8 + length
+    columns = {}
+    for name in ("x", "y", "sizeM", "builtDeg"):
+        columns[name] = np.frombuffer(data, dtype="<f4", count=n, offset=at)
+        at += 4 * n
+    columns["form"] = np.frombuffer(data, dtype=np.uint8, count=n, offset=at)
+    return header, columns
+
+
+def _built_index(text, count: int):
+    """coral-<n> as a row of the colonies file, or None."""
+    import re
+    found = re.fullmatch(r"coral-(\d+)", str(text or ""))
+    n = int(found.group(1)) if found else 0
+    return n - 1 if 1 <= n <= count else None
+
+
+def _layer_edited(reef: dict, edits: dict, city) -> dict:
+    """A reef drawn as a layer, edited by the few colonies a world names.
+
+    A partial world lists only what was moved, turned, resized, hidden or
+    copied, by coral-<n> (row n of the place's colonies file); every colony
+    it does not name stays as built. The edits are taken only on the reef
+    they were made on: the world carries the colonies file's digest, and a
+    rebuilt reef is a different draw whose coral-<n> is another colony."""
+    named = reef.get("coloniesFile")
+    path = (pathlib.Path(city) / named) if city is not None and named else None
+    said = {"world": edits.get("version"), "package": edits.get("package")}
+    if path is None or not path.exists():
+        reef["editsNotTaken"] = "the place has no colonies file, so the world's coral edits cannot be matched to it"
+        return reef
+    header, columns = read_colonies(path)
+    if edits.get("digest") != header.get("digest"):
+        reef["editsNotTaken"] = (f"the world's coral was edited on another build of this reef "
+                                 f"({edits.get('package') or edits.get('digest')}); a rebuilt reef is a "
+                                 "different draw, so its edits are not in this dive")
+        return reef
+    count, forms = int(header["count"]), list(header.get("forms") or [])
+    moved, hidden, copies = {}, set(), []
+    for item in edits.get("items") or []:
+        if not isinstance(item, dict) or item.get("kind", "coral") != "coral":
+            continue
+        i = _built_index(item.get("id"), count)
+        if i is not None:
+            if item.get("hidden"):
+                hidden.add(i)
+                continue
+            change = {k: float(item[k]) for k in ("x", "y", "sizeM", "headingDeg") if item.get(k) is not None}
+            if change:
+                moved[i] = change
+            continue
+        if item.get("hidden") or item.get("x") is None or item.get("y") is None:
+            continue
+        of = _built_index(item.get("copyOf"), count)
+        if of is None:
+            # Of its form, the built colony nearest its size.
+            form = str(item.get("form") or "massive")
+            like = np.flatnonzero(columns["form"] == forms.index(form)) if form in forms else np.arange(count)
+            if not len(like):
+                like = np.arange(count)
+            size = float(item.get("sizeM", 0.5))
+            of = int(like[np.argmin(np.abs(columns["sizeM"][like] - size))])
+        copies.append({"id": str(item.get("id") or ""), "of": of, "x": float(item["x"]), "y": float(item["y"]),
+                       "sizeM": float(item.get("sizeM", columns["sizeM"][of])),
+                       "headingDeg": float(item.get("headingDeg", 0.0))})
+    reef["layerEdits"] = {"moved": moved, "hidden": sorted(hidden), "copies": copies,
+                          "builtSizeM": {i: float(columns["sizeM"][i]) for i in
+                                         list(moved) + [c["of"] for c in copies]}}
+    reef["editedBy"] = {**said, "partial": True, "colonies": count - len(hidden) + len(copies),
+                        "moved": len(moved), "new": len(copies), "gone": len(hidden)}
+    return reef
+
+
+def _apply_layer_edits(c: "Colonies", edits: dict, bottom_under, which) -> np.ndarray:
+    """The layer's colonies as a partial world left them: moved, sized and
+    hidden in place, copies added at the end. Returns the prototype of each."""
+    built = edits.get("builtSizeM") or {}
+    for i, change in (edits.get("moved") or {}).items():
+        i = int(i)
+        if "x" in change or "y" in change:
+            x, y = change.get("x", c.at[i, 0]), change.get("y", c.at[i, 1])
+            c.at[i] = (x, y, float(bottom_under(x, y)) if bottom_under else c.at[i, 2])
+        if "sizeM" in change:
+            grown = change["sizeM"] / max(1e-6, built.get(i, change["sizeM"]))
+            c.wide[i] *= grown
+            c.height[i] *= grown
+            c.size[i] *= grown
+    add = edits.get("copies") or []
+    if add:
+        of = np.array([int(one["of"]) for one in add])
+        grown = np.array([one["sizeM"] / max(1e-6, built.get(int(one["of"]), one["sizeM"])) for one in add])
+        at = np.array([(one["x"], one["y"], float(bottom_under(one["x"], one["y"])) if bottom_under
+                        else c.at[int(one["of"]), 2]) for one in add])
+        c.at = np.concatenate([c.at, at])
+        c.wide = np.concatenate([c.wide, c.wide[of] * grown])
+        c.height = np.concatenate([c.height, c.height[of] * grown])
+        c.size = np.concatenate([c.size, c.size[of] * grown])
+        c.kind = np.concatenate([c.kind, c.kind[of]])
+        which = np.concatenate([which, which[of]])
+    keep = np.ones(len(c.at), dtype=bool)
+    keep[[int(i) for i in edits.get("hidden") or []]] = False
+    c.at, c.wide, c.height, c.size, c.kind = c.at[keep], c.wide[keep], c.height[keep], c.size[keep], c.kind[keep]
+    return which[keep]
+
+
 def _usd_name(text: str) -> str:
     import re
     name = re.sub(r"[^A-Za-z0-9_]", "_", text)
@@ -265,7 +383,7 @@ def colonies_of(described: dict, bottom_under, city=None) -> Colonies:
     rows = (described.get("reef") or {}).get("colonies_at") or []
     layer = (described.get("layers") or {}).get("coral")
     if not rows and city is not None and layer and (city / layer).exists():
-        return colonies_in_the_layer(city / layer, described)
+        return colonies_in_the_layer(city / layer, described, bottom_under)
     c = Colonies()
     at, size, kind, prim, drawn = [], [], [], [], []
     for row in rows:
@@ -316,7 +434,7 @@ def _floats(text: str, name: str, width: int) -> np.ndarray:
     return numbers.reshape(-1, width)
 
 
-def colonies_in_the_layer(path, described: dict) -> Colonies:
+def colonies_in_the_layer(path, described: dict, bottom_under=None) -> Colonies:
     """The colonies a surveyed reef draws as one instanced layer
     (tools/reef-survey): where each stands, how wide and how tall.
 
@@ -340,6 +458,9 @@ def colonies_in_the_layer(path, described: dict) -> Colonies:
     c.height = scales[:, 2].copy()
     c.size = np.maximum(2.0 * c.wide, c.height)
     c.kind = np.array([kind_of.get(int(i), "massive") for i in which], dtype=object)
+    edits = (described.get("reef") or {}).get("layerEdits")
+    if edits:
+        which = _apply_layer_edits(c, edits, bottom_under, which)
     # What the survey took each one for (stony, head, low...), its own guess
     # from shape and colour: what a transect over the reef reports, while
     # `kind` stays what decides how a colony stands and bends.
@@ -348,8 +469,10 @@ def colonies_in_the_layer(path, described: dict) -> Colonies:
         c.called = np.array([called[i] if 0 <= i < len(called) else k for i, k in zip(which, c.kind)],
                             dtype=object)
     c.prim = []
+    n = len(c.at)
     _fresh(c, n)
     c.from_ = (f"the reef layer {pathlib.Path(path).name}: {n} colonies as the survey drew them"
+               + (", as the world edited them" if edits else "")
                + ("" if sways else "; which bend is not recorded, so all stand as massive (assumed)"))
     return c
 

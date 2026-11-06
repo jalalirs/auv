@@ -393,6 +393,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
         print(f"    {laid['record']['pieces']:,} pieces of reef framework on the hard ground")
 
     (where / "coral.usda").write_text(_instancer(*all_at))
+    listed = write_colonies(where, all_at[3], all_at[4], all_at[7], all_at[7], all_at[8], all_at[6], all_at[2])
 
     # How much of the ground this actually covers.
     #
@@ -463,7 +464,7 @@ def plant(where: pathlib.Path, height, across: float, seed: int,
     begin = zonation.best_ground(ground, np.minimum(planted / (step_ * step_), 1.0), across)
     if begin:
         begin["judgedOn"] = "the colonies planted, by their area in each cell"
-    return {"colonies": int(how_many), "prototypes": len(prototypes),
+    return {"colonies": int(how_many), "prototypes": len(prototypes), **listed,
             # What each prototype *is*, by its index in the instancer, and how
             # much ground one of them covers at scale one.
             #
@@ -1009,6 +1010,57 @@ def _from_library(path: pathlib.Path, width: float):
     points = points - np.array([points[:, 0].mean(), points[:, 1].mean(), points[:, 2].min()])
     across = max(float(np.ptp(points[:, 0])), float(np.ptp(points[:, 1])), 1e-6)
     return points * (width / across), faces, per_point
+
+
+COLONIES_FILE = "colonies.bin"
+
+
+def write_colonies(where: pathlib.Path, x, y, sx, sz, turn, which, prototype_kinds) -> dict:
+    """Every colony in the instancer, row i being instance i, so an editor
+    can draw and edit a reef of a million without reading the USD.
+
+    "ICOL", a uint32 header length, a JSON header padded with spaces to four
+    bytes, then x, y, sizeM, builtDeg as float32 columns and form as a uint8
+    column indexing the header's forms. sizeM is what the runtime takes a
+    colony's size to be (twice its scale across, or its height); builtDeg is
+    its turn clockwise from north. The digest is of the columns, so a world's
+    edits are matched to the reef they were made on, not to a version id the
+    build cannot know."""
+    import hashlib
+    import json
+    import struct
+
+    forms = sorted(set(str(k) for k in prototype_kinds))
+    index = {f: i for i, f in enumerate(forms)}
+    which = np.asarray(which, dtype=int)
+    form = np.array([index[str(prototype_kinds[i])] for i in range(len(prototype_kinds))], dtype=np.uint8)[which]
+    size = np.maximum(2.0 * np.asarray(sx, dtype=float), np.asarray(sz, dtype=float))
+    built = np.mod(-np.degrees(np.asarray(turn, dtype=float)), 360.0)
+    columns = b"".join(np.asarray(c, dtype="<f4").tobytes() for c in (x, y, size, built)) + form.tobytes()
+    digest = "sha256:" + hashlib.sha256(columns).hexdigest()
+    header = json.dumps({"format": 1, "digest": digest, "count": int(len(which)), "forms": forms}).encode()
+    header += b" " * (-len(header) % 4)
+    (where / COLONIES_FILE).write_bytes(b"ICOL" + struct.pack("<I", len(header)) + header + columns)
+    return {"coloniesFile": COLONIES_FILE, "coloniesDigest": digest}
+
+
+def read_colonies(path: pathlib.Path) -> tuple[dict, dict]:
+    """The header and the columns of a colonies file (write_colonies)."""
+    import json
+    import struct
+
+    data = pathlib.Path(path).read_bytes()
+    if data[:4] != b"ICOL":
+        raise ValueError(f"{path} is not a colonies file")
+    (length,) = struct.unpack("<I", data[4:8])
+    header = json.loads(data[8:8 + length])
+    n, at = int(header["count"]), 8 + length
+    columns = {}
+    for name in ("x", "y", "sizeM", "builtDeg"):
+        columns[name] = np.frombuffer(data, dtype="<f4", count=n, offset=at)
+        at += 4 * n
+    columns["form"] = np.frombuffer(data, dtype=np.uint8, count=n, offset=at)
+    return header, columns
 
 
 def _instancer(prototypes, colours, kinds_of, x, y, z, which, scale, turn, surfaces=None, painted=None) -> str:

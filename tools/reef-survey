@@ -277,6 +277,9 @@ def main() -> int:
         framework = {**laid["record"], "firstPrototype": first}
         print(f"  {laid['record']['pieces']:,} pieces of reef framework where the survey found reef")
     (place / "coral.usda").write_text(_instancer(*drawn_at))
+    import reef as grown_reef
+    listed = grown_reef.write_colonies(place, drawn_at[3], drawn_at[4], drawn_at[7], drawn_at[8], drawn_at[9],
+                                       drawn_at[6], drawn_at[2])
     size = (place / "coral.usda").stat().st_size
     print(f"  coral.usda: {len(prototypes)} prototypes, {len(colonies):,} instances, {size / 1e6:.1f} MB")
 
@@ -386,6 +389,7 @@ def main() -> int:
                             "(%d colonies within 10 m, %.1f m deep)"
                             % (asked.begin_depth[0], asked.begin_depth[1], begin["colonies"], begin["depthM"]))
     site["layers"]["coral"] = "coral.usda"
+    site["reef"].update(listed)
     if picture.exists():
         site["picture"] = "picture.jpg"
     built.record_call(site, "reef-survey")

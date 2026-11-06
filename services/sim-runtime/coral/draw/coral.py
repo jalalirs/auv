@@ -179,3 +179,67 @@ class Polyps:
                     attribute.Set(Gf.Vec3f(*pale))
                 else:
                     attribute.Set(float(min(1.0, float(built) + 0.3 * share)))
+
+
+def layer_edited(stage, edits: dict, bottom_under, units_per_metre: float = 1.0) -> dict:
+    """Draw a reef layer as a partial world left it.
+
+    The layer is one point instancer, so an edited colony is an edited row:
+    its position stood on the seabed where it was moved to, its scale grown,
+    its turn added to the one it was built with (headingDeg is clockwise from
+    north, USD turns anticlockwise); a hidden one is an invisible id; a copy
+    is a new row of the prototype it copies. Done once, before the dive."""
+    import math
+
+    from pxr import Gf, UsdGeom, Vt
+
+    instancer = None
+    for prim in stage.Traverse():
+        if prim.GetTypeName() == "PointInstancer" and "Coral" in str(prim.GetPath()):
+            instancer = UsdGeom.PointInstancer(prim)
+            break
+    if instancer is None:
+        return {"notDrawn": "no coral instancer on the stage"}
+    positions = np.array(instancer.GetPositionsAttr().Get(), dtype=float)
+    scales = np.array(instancer.GetScalesAttr().Get(), dtype=float)
+    which = np.array(instancer.GetProtoIndicesAttr().Get(), dtype=int)
+    turns = np.array([[q.GetReal(), *q.GetImaginary()] for q in instancer.GetOrientationsAttr().Get()], dtype=float)
+    built = edits.get("builtSizeM") or {}
+
+    def turned(q, degrees):
+        half = -math.radians(degrees) / 2.0
+        w, z = math.cos(half), math.sin(half)
+        # A turn about Z, composed before the built orientation.
+        return np.array([w * q[0] - z * q[3], w * q[1] - z * q[2], w * q[2] + z * q[1], w * q[3] + z * q[0]])
+
+    def placed(x, y, was):
+        z = float(bottom_under(x, y)) * units_per_metre if bottom_under else was[2]
+        return np.array([x * units_per_metre, y * units_per_metre, z])
+
+    moved = 0
+    for i, change in (edits.get("moved") or {}).items():
+        i = int(i)
+        if "x" in change or "y" in change:
+            positions[i] = placed(change.get("x", positions[i, 0] / units_per_metre),
+                                  change.get("y", positions[i, 1] / units_per_metre), positions[i])
+        if "sizeM" in change:
+            scales[i] *= change["sizeM"] / max(1e-6, built.get(i, change["sizeM"]))
+        if change.get("headingDeg"):
+            turns[i] = turned(turns[i], change["headingDeg"])
+        moved += 1
+    add = edits.get("copies") or []
+    for one in add:
+        of = int(one["of"])
+        positions = np.vstack([positions, placed(one["x"], one["y"], positions[of])])
+        scales = np.vstack([scales, scales[of] * one["sizeM"] / max(1e-6, built.get(of, one["sizeM"]))])
+        turns = np.vstack([turns, turned(turns[of], one.get("headingDeg", 0.0))])
+        which = np.append(which, which[of])
+    instancer.GetPositionsAttr().Set(Vt.Vec3fArray.FromNumpy(positions.astype(np.float32)))
+    instancer.GetScalesAttr().Set(Vt.Vec3fArray.FromNumpy(scales.astype(np.float32)))
+    instancer.GetProtoIndicesAttr().Set(Vt.IntArray.FromNumpy(which.astype(np.int32)))
+    instancer.GetOrientationsAttr().Set(Vt.QuathArray([Gf.Quath(float(q[0]), float(q[1]), float(q[2]), float(q[3]))
+                                                       for q in turns]))
+    hidden = [int(i) for i in edits.get("hidden") or []]
+    if hidden:
+        instancer.GetInvisibleIdsAttr().Set(Vt.Int64Array(hidden))
+    return {"moved": moved, "copied": len(add), "notDrawn": len(hidden)}

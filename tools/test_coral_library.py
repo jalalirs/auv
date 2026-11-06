@@ -57,6 +57,12 @@ def test_a_reef_plants_the_kinds_its_library_has(tmp_path, monkeypatch):
     massive = [i for i, k in enumerate(said["prototypeKinds"]) if k == "massive"]
     # Scaled to stand as tall as the grown prototype of that size would.
     assert all(said["prototypeAreaM2"][i] > 0 for i in massive)
+    # Every instance listed, row for row, for an editor that cannot read the USD.
+    header, columns = reef.read_colonies(tmp_path / "place" / said["coloniesFile"])
+    assert header["digest"] == said["coloniesDigest"]
+    assert header["count"] == text.split("int[] protoIndices = [")[1].split("]")[0].count(",") + 1
+    assert set(header["forms"]) == set(said["prototypeKinds"])
+    assert columns["sizeM"].min() > 0 and 0 <= columns["builtDeg"].min() and columns["builtDeg"].max() < 360
 
 
 def test_without_a_library_nothing_changes(tmp_path, monkeypatch):

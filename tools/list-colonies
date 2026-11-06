@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""List a built place's colonies for the editor, without rebuilding its reef.
+
+    tools/list-colonies places/al-fahal
+
+Writes colonies.bin beside the place's reef layer (tools/reef.py
+write_colonies) from the layer as it stands, and names it in site.json as
+reef.coloniesFile with its digest. A rebuild would write it too, but a rebuild
+is a new draw of the reef: this keeps the colonies people have dived on."""
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+
+import numpy as np
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import built  # noqa: E402
+import reef  # noqa: E402
+
+
+def _array(text: str, name: str, width: int) -> np.ndarray:
+    found = re.search(r"\b%s = \[(.*?)\]" % re.escape(name), text, re.S)
+    if not found:
+        raise SystemExit(f"the layer has no {name}")
+    numbers = np.array(re.findall(r"-?\d+(?:\.\d*)?(?:e-?\d+)?", found.group(1)), dtype=float)
+    return numbers.reshape(-1, width)
+
+
+def main() -> int:
+    parse = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parse.add_argument("place", type=pathlib.Path, help="the place directory (site.json, the coral layer)")
+    asked = parse.parse_args()
+    site = json.loads((asked.place / "site.json").read_text())
+    layer = (site.get("layers") or {}).get("coral")
+    kinds = (site.get("reef") or {}).get("prototypeKinds")
+    if not layer or not (asked.place / layer).is_file():
+        raise SystemExit(f"{asked.place} draws no reef layer")
+    if not kinds:
+        raise SystemExit(f"{asked.place} does not say what each prototype is (reef.prototypeKinds)")
+    text = (asked.place / layer).read_text()
+    at = _array(text, "point3f[] positions", 3)
+    which = _array(text, "int[] protoIndices", 1)[:, 0].astype(int)
+    scales = _array(text, "float3[] scales", 3)
+    turns = _array(text, "quath[] orientations", 4)
+    turn = 2.0 * np.arctan2(turns[:, 3], turns[:, 0])
+    listed = reef.write_colonies(asked.place, at[:, 0], at[:, 1], scales[:, 0], scales[:, 2], turn, which, kinds)
+    site["reef"].update(listed)
+    built.record_call(site, "list-colonies")
+    (asked.place / "site.json").write_text(json.dumps(site, indent=2) + "\n")
+    size = (asked.place / listed["coloniesFile"]).stat().st_size
+    print(f"  {len(which):,} colonies in {asked.place / listed['coloniesFile']} ({size / 1e6:.1f} MB), {listed['coloniesDigest'][:19]}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

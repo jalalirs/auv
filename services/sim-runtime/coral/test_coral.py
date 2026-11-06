@@ -277,3 +277,53 @@ def test_a_reef_drawn_as_a_layer_keeps_its_layer_and_says_so():
     assert "colonies_at" not in edited["reef"]
     assert "not in this dive" in edited["reef"]["editsNotTaken"]
     assert as_edited(_tank(), None) == _tank()
+
+
+def _colonies_file(path, x, y, size, forms, form):
+    """A colonies file as tools/reef.py write_colonies writes one."""
+    import hashlib
+    import json
+    import struct
+
+    columns = b"".join(np.asarray(c, dtype="<f4").tobytes() for c in (x, y, size, np.zeros(len(x))))
+    columns += np.asarray(form, dtype=np.uint8).tobytes()
+    digest = "sha256:" + hashlib.sha256(columns).hexdigest()
+    header = json.dumps({"format": 1, "digest": digest, "count": len(x), "forms": forms}).encode()
+    header += b" " * (-len(header) % 4)
+    path.write_bytes(b"ICOL" + struct.pack("<I", len(header)) + header + columns)
+    return digest
+
+
+def test_a_layer_reef_takes_a_partial_world_on_the_reef_it_was_edited_on(tmp_path):
+    """A reef of a million is edited by naming the few colonies changed:
+    coral-<n> is row n of the colonies file, everything not named stays as
+    built, and a world edited on another build of the reef is not taken."""
+    from systems.coral import as_edited, colonies_of, read_colonies
+
+    (tmp_path / "coral.usda").write_text(LAYER)
+    digest = _colonies_file(tmp_path / "colonies.bin", [0, 10.5, 3], [0, -3, 3], [0.6, 0.9, 2.2],
+                            ["fan", "massive"], [1, 0, 1])
+    header, columns = read_colonies(tmp_path / "colonies.bin")
+    assert header["count"] == 3 and np.allclose(columns["sizeM"], [0.6, 0.9, 2.2])
+    described = {"layers": {"coral": "coral.usda"},
+                 "reef": {"swaysWith": {"fan": [2]}, "coloniesFile": "colonies.bin"}}
+    edits = {"version": "ver_w", "partial": True, "package": "ver_p", "digest": digest, "items": [
+        {"id": "coral-2", "kind": "coral", "x": 20.0, "sizeM": 1.8},
+        {"id": "coral-3", "kind": "coral", "hidden": True},
+        {"id": "coral-new-1", "kind": "coral", "x": 1.0, "y": 2.0, "sizeM": 0.6, "copyOf": "coral-1"}]}
+    edited = as_edited(described, edits, tmp_path)
+    assert edited["reef"]["editedBy"] == {"world": "ver_w", "package": "ver_p", "partial": True,
+                                          "colonies": 3, "moved": 1, "new": 1, "gone": 1}
+    c = colonies_of(edited, lambda x, y: -5.0, tmp_path)
+    assert len(c) == 3, "one hidden, one copied"
+    assert np.allclose(c.at[1], [20.0, -3.0, -5.0]), "moved east and stood on the seabed there"
+    assert np.isclose(c.height[1], 0.9 * 2.0), "twice the size it was built"
+    assert np.allclose(c.at[2, :2], [1.0, 2.0]) and np.isclose(c.height[2], c.height[0])
+    assert list(c.kind) == ["massive", "fan", "massive"]
+    assert "as the world edited them" in c.from_
+
+    other = as_edited(described, {**edits, "digest": "sha256:another"}, tmp_path)
+    assert "layerEdits" not in other["reef"] and "another build" in other["reef"]["editsNotTaken"]
+    assert len(colonies_of(other, lambda x, y: -5.0, tmp_path)) == 3
+    unlisted = as_edited({**described, "reef": {}}, edits, tmp_path)
+    assert "no colonies file" in unlisted["reef"]["editsNotTaken"]
