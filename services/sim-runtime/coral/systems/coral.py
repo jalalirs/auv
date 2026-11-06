@@ -298,7 +298,9 @@ def _layer_edited(reef: dict, edits: dict, city) -> dict:
         reef["editsNotTaken"] = "the place has no colonies file, so the world's coral edits cannot be matched to it"
         return reef
     header, columns = read_colonies(path)
-    if edits.get("digest") != header.get("digest"):
+    # The editor names the reef it edited by the file's digest, as "digest"
+    # or as the package it was edited on.
+    if (edits.get("digest") or edits.get("package")) != header.get("digest"):
         reef["editsNotTaken"] = (f"the world's coral was edited on another build of this reef "
                                  f"({edits.get('package') or edits.get('digest')}); a rebuilt reef is a "
                                  "different draw, so its edits are not in this dive")

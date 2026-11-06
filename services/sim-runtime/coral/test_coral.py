@@ -322,6 +322,11 @@ def test_a_layer_reef_takes_a_partial_world_on_the_reef_it_was_edited_on(tmp_pat
     assert list(c.kind) == ["massive", "fan", "massive"]
     assert "as the world edited them" in c.from_
 
+    by_package = {k: v for k, v in edits.items() if k != "digest"} | {"package": digest}
+    assert as_edited(described, by_package, tmp_path)["reef"]["editedBy"]["moved"] == 1
+    palette = {**edits, "items": [{"id": "coral-new-2", "kind": "coral", "form": "fan", "x": 5.0, "y": 5.0, "sizeM": 0.5}]}
+    c = colonies_of(as_edited(described, palette, tmp_path), lambda x, y: -5.0, tmp_path)
+    assert len(c) == 4 and c.kind[-1] == "fan", "a new coral of a form, copied from a built one of it"
     other = as_edited(described, {**edits, "digest": "sha256:another"}, tmp_path)
     assert "layerEdits" not in other["reef"] and "another build" in other["reef"]["editsNotTaken"]
     assert len(colonies_of(other, lambda x, y: -5.0, tmp_path)) == 3
