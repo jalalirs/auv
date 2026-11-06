@@ -47,6 +47,12 @@ type WorldLayer struct {
 	ID    string            `json:"id"`
 	Kind  string            `json:"kind"`
 	Items []json.RawMessage `json:"items,omitempty"`
+	// Params a reef says of itself; a big reef's says its items are edits
+	// over the build they were made on.
+	Params *struct {
+		ColonyEdits bool   `json:"colonyEdits,omitempty"`
+		EditedOn    string `json:"editedOn,omitempty"`
+	} `json:"params,omitempty"`
 }
 
 // ValidateWorld refuses a document the platform could not bake or fly.
@@ -129,9 +135,13 @@ func WorldColonies(versionID string, document json.RawMessage) (json.RawMessage,
 		return nil, fmt.Errorf("reading a world document: %w", err)
 	}
 	items := []json.RawMessage{}
+	partial, editedOn := false, ""
 	for _, layer := range world.Layers {
 		if layer.Kind != "reef" {
 			continue
+		}
+		if layer.Params != nil && layer.Params.ColonyEdits {
+			partial, editedOn = true, layer.Params.EditedOn
 		}
 		for _, raw := range layer.Items {
 			var item struct {
@@ -144,6 +154,11 @@ func WorldColonies(versionID string, document json.RawMessage) (json.RawMessage,
 	}
 	if len(items) == 0 {
 		return nil, nil
+	}
+	// A big reef's are only the colonies changed, on the package they were
+	// changed on; the rest stay as built, and a dive on another package takes none.
+	if partial {
+		return json.Marshal(map[string]any{"version": versionID, "partial": true, "package": editedOn, "items": items})
 	}
 	return json.Marshal(map[string]any{"version": versionID, "items": items})
 }

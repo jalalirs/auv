@@ -21,6 +21,8 @@ import type { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 
 import { groundAt, type Ground } from "./SiteChart.js";
 import { stagesInto, type PlanIn3D } from "./StagesIn3D.js";
+import { leaveOut, nearbyInto, populationPoints } from "./Population3D.js";
+import type { Near, Population } from "../platform/colonies.js";
 
 /** Something drawn in the world: an item of its reef or its structures. */
 export interface Shown {
@@ -158,7 +160,10 @@ const COLOURS: Record<string, number> = {
 const CHOSEN = 0xff8a3d;
 const SURFACE = new Set(["ship", "buoy", "dredger"]);
 
-export function World3D({ ground, glass, items, showing, selected, mode, snap, grid, ghost, brush, measure, plan, api,
+/** A big reef's colonies, drawn whole; the rows taken are drawn as items. */
+export interface PopulationShown { p: Population; near: Near; taken: Set<number> }
+
+export function World3D({ ground, glass, items, showing, selected, mode, snap, grid, ghost, brush, measure, plan, population, api,
                           onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle }: {
   ground: Ground;
   /** A tank: drawn as its glass and the water in it, the ground cut to it. */
@@ -178,6 +183,7 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
   measure?: { x: number; y: number }[];
   /** A mission's work, drawn at the heights it is flown. */
   plan?: PlanIn3D;
+  population?: PopulationShown;
   api?: React.Ref<View3D>;
   /** A click on the ground with something in hand, a brush or a tape; and
    *  which of a plan's stages was clicked, if one was. */
@@ -197,15 +203,20 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera;
     controls: OrbitControls; gizmo: TransformControls; proxy: THREE.Object3D;
     terrain: THREE.Mesh; water: THREE.Object3D; things: THREE.Group; corals: THREE.Group; marks: THREE.Group;
-    overlay: THREE.Group; plan: THREE.Group; grid: THREE.Object3D; lift: number;
+    overlay: THREE.Group; plan: THREE.Group; pop: THREE.Group; nearby: THREE.Group; grid: THREE.Object3D; lift: number;
+    /** The ground's height in the scene as the terrain mesh draws it, which a
+     *  coarse mesh over kilometres puts metres off the finest heights. */
+    drawnFloor: (x: number, y: number) => number;
+    /** Where the shapes of the colonies near the view were last drawn. */
+    nearAt?: { x: number; y: number; r: number; when: number };
     /** The drawing's size in pixels, which fat lines are drawn to. */
     resolution: THREE.Vector2;
     /** Where each item is in the scene, and how big, for framing and boxes. */
     where: Map<string, { at: THREE.Vector3; r: number }>;
     dragging: boolean;
   } | undefined>(undefined);
-  const said = useRef({ onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle, selected, mode, items, plan });
-  said.current = { onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle, selected, mode, items, plan };
+  const said = useRef({ onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle, selected, mode, items, plan, population });
+  said.current = { onPick, onSelect, onTransformStart, onTransform, onTransformEnd, onHover, onDrop, onHandle, selected, mode, items, plan, population };
 
   useImperativeHandle(api, () => ({
     view: (which) => {
@@ -314,6 +325,21 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
       const x = position.getX(k), y = -position.getZ(k);
       position.setY(k, -groundAt(ground, x, y) * lift);
     }
+    // The mesh's own heights, before a tank cuts it, to put things on it.
+    const grid = segments + 1, cellM = across / segments;
+    const heights = new Float32Array(grid * grid);
+    for (let k = 0; k < position.count; k++) heights[k] = position.getY(k);
+    const drawnFloor = (x: number, y: number) => {
+      // PlaneGeometry rows run from the north edge south; columns west to east.
+      const fi = Math.min(segments, Math.max(0, (x + across / 2) / cellM)), fj = Math.min(segments, Math.max(0, (across / 2 - y) / cellM));
+      const i = Math.min(segments - 1, Math.floor(fi)), j = Math.min(segments - 1, Math.floor(fj));
+      const u = fi - i, v = fj - j;
+      const h = (a: number, b: number) => heights[b * grid + a]!;
+      // On the cell's triangle, split as PlaneGeometry splits it.
+      return u + v <= 1
+        ? h(i, j) + u * (h(i + 1, j) - h(i, j)) + v * (h(i, j + 1) - h(i, j))
+        : h(i + 1, j + 1) + (1 - u) * (h(i, j + 1) - h(i + 1, j + 1)) + (1 - v) * (h(i + 1, j) - h(i + 1, j + 1));
+    };
     if (glass) inTheTank(plane, glass);
     plane.computeVertexNormals();
     const terrain = new THREE.Mesh(plane, glass
@@ -340,7 +366,8 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     const marks = new THREE.Group();
     const overlay = new THREE.Group();
     const planned = new THREE.Group();
-    world.add(things, corals, marks, overlay, planned);
+    const pop = new THREE.Group(), nearby = new THREE.Group();
+    world.add(things, corals, marks, overlay, planned, pop, nearby);
 
     // The gizmo holds a stand-in at the middle of the selection; what it does
     // to the stand-in is said to the editor as a change from where it began.
@@ -377,14 +404,18 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
 
     const resolution = new THREE.Vector2(1, 1);
     scene.current = { renderer, scene: world, camera, controls, gizmo, proxy, terrain, water, things, corals, marks, overlay,
-                      plan: planned, grid: gridLines, lift, resolution, where: new Map(), dragging: false };
+                      plan: planned, pop, nearby, grid: gridLines, lift, resolution, drawnFloor, where: new Map(), dragging: false };
 
+    let pointScale = 800;
     const fit = () => {
       const w = el.clientWidth || 1, h = el.clientHeight || 1;
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       resolution.set(w, h);
+      // A colony's point is as many pixels as its size is at its distance.
+      pointScale = renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
+      pop.traverse((o) => { if (o instanceof THREE.Points) (o.material as THREE.ShaderMaterial).uniforms.scale!.value = pointScale; });
       planned.traverse((o) => { if (o instanceof Line2) (o.material as LineMaterial).resolution.set(w, h); });
     };
     fit();
@@ -530,8 +561,23 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
         if (at) said.current.onPick(at, { shift: event.shiftKey, ...(stage !== undefined ? { stage } : {}) });
         return;
       }
-      const id = hitItem();
-      if (id) said.current.onSelect([id], event.shiftKey || event.metaKey || event.ctrlKey ? "toggle" : "replace");
+      const how = event.shiftKey || event.metaKey || event.ctrlKey ? "toggle" : "replace";
+      let id = hitItem();
+      // A colony of a big reef: the one nearest where the ground was clicked.
+      const many = said.current.population;
+      if (!id && many && pop.visible) {
+        // Its shape, near the view; else the one nearest the ground clicked.
+        const hit = ray.intersectObjects(nearby.children, false).find((h) => h.instanceId !== undefined);
+        const shaped = hit ? (hit.object.userData.rows as number[] | undefined)?.[hit.instanceId!] : undefined;
+        if (shaped !== undefined) id = `coral-${shaped + 1}`;
+      }
+      if (!id && many && pop.visible) {
+        const at = onGround();
+        const reach = Math.max(0.4, camera.position.distanceTo(controls.target) / 40);
+        const row = at ? many.near.nearest(at.x, at.y, reach) : undefined;
+        if (row !== undefined && !many.taken.has(row)) id = `coral-${row + 1}`;
+      }
+      if (id) said.current.onSelect([id], how);
       else if (!event.shiftKey) said.current.onSelect([], "replace");
     };
     const leave = () => said.current.onHover?.(undefined);
@@ -558,12 +604,31 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     el.addEventListener("dragover", over);
     el.addEventListener("drop", drop);
 
+    // The shapes of the colonies near where the camera looks, drawn again
+    // when the view has moved a good part of their reach, at most thrice a second.
+    const shapesNear = () => {
+      const many = said.current.population, s = scene.current;
+      if (!s) return;
+      const far = camera.position.distanceTo(controls.target);
+      if (!many || far > 300 || !pop.visible) {
+        if (s.nearAt) { emptied(nearby); s.nearAt = undefined; }
+        return;
+      }
+      const r = Math.min(60, Math.max(4, far * 0.45));
+      const x = controls.target.x, y = -controls.target.z, now = performance.now();
+      const was = s.nearAt;
+      if (was && (now - was.when < 330 || (Math.hypot(x - was.x, y - was.y) < r / 3 && Math.abs(r - was.r) < r * 0.3))) return;
+      nearbyInto(nearby, many.p, many.near, { x, y }, r, drawnFloor, many.taken);
+      s.nearAt = { x, y, r, when: now };
+    };
+
     let raf = 0;
     const clock = new THREE.Clock();
     const frame = () => {
       const delta = clock.getDelta();
       if (helper.animating) helper.update(delta);
       else controls.update();
+      shapesNear();
       renderer.clear();
       renderer.render(world, camera);
       helper.render(renderer);
@@ -602,6 +667,8 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
     s.terrain.visible = showing.terrain;
     s.water.visible = showing.water;
     s.corals.visible = showing.reef;
+    s.pop.visible = showing.reef;
+    s.nearby.visible = showing.reef;
     const chosen = new Set(selected);
     for (const group of [s.things, s.corals, s.marks]) emptied(group);
     s.where.clear();
@@ -654,6 +721,26 @@ export function World3D({ ground, glass, items, showing, selected, mode, snap, g
   }, [items, selected, mode, snap, ground]);
 
   useEffect(() => { if (scene.current) scene.current.grid.visible = grid; }, [grid, ground, glass]);
+
+  // A big reef's colonies, drawn once for the population and the ground.
+  useEffect(() => {
+    const s = scene.current;
+    if (!s) return;
+    emptied(s.pop);
+    s.nearAt = undefined;
+    if (!population) return;
+    const points = populationPoints(population.p, s.drawnFloor);
+    (points.material as THREE.ShaderMaterial).uniforms.scale!.value = s.renderer.domElement.height / (2 * Math.tan((s.camera.fov * Math.PI) / 360));
+    s.pop.add(points);
+  }, [population?.p, ground, glass]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The rows drawn as items are left out of it.
+  useEffect(() => {
+    const s = scene.current;
+    const points = s?.pop.children[0] as THREE.Points | undefined;
+    if (!s || !points || !population) return;
+    leaveOut(points, population.taken);
+    s.nearAt = undefined;
+  }, [population, ground, glass]);
 
   // The mission, drawn again whenever it changes.
   useEffect(() => {

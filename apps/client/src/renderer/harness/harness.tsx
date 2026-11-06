@@ -449,10 +449,15 @@ async function packagesOf(): Promise<Packages> {
   const placePackages = new Map();
   for (const p of places) {
     const site = await (await fetch(`./harness/fixtures/${p.fixture}/site.json`)).json();
-    placePackages.set(p.id, {
-      version: { id: `${p.id}-v1` }, pictureUrl: undefined, credit: undefined, site,
-      files: [{ path: site.mesh.heightfield.file, url: `./harness/fixtures/${p.fixture}/${site.mesh.heightfield.file}` }],
-    });
+    const files = [{ path: site.mesh.heightfield.file, url: `./harness/fixtures/${p.fixture}/${site.mesh.heightfield.file}` }];
+    // A big reef's colonies, when a colonies.bin was made for the fixture.
+    const colonies = `./harness/fixtures/${p.fixture}/colonies.bin`;
+    const head = await fetch(colonies, { method: "HEAD" }).catch(() => undefined);
+    if (head?.ok && head.headers.get("content-type") !== "text/html") {
+      site.reef = { ...site.reef, coloniesFile: "colonies.bin" };
+      files.push({ path: "colonies.bin", url: colonies });
+    }
+    placePackages.set(p.id, { version: { id: `${p.id}-v1` }, pictureUrl: undefined, credit: undefined, site, files });
   }
   const vehicles = new Map();
   for (const [id, slug] of [["veh_mini", "mini-hoot"], ["veh_luna", "boxfish-luna"]] as const) {

@@ -23,7 +23,8 @@ import { Outliner } from "../parts/Outliner.js";
 import { extentOf, hullOf, launchAt, legsOf, type Drawn, type Plan } from "../catalog/stages.js";
 import { groundAt, groundOf, type Ground } from "../parts/SiteChart.js";
 import type { PlanIn3D } from "../parts/StagesIn3D.js";
-import { World3D, type Delta, type Glass, type Mode, type Shown, type View3D, type ViewName } from "../parts/World3D.js";
+import { World3D, type Delta, type Glass, type Mode, type PopulationShown, type Shown, type View3D, type ViewName } from "../parts/World3D.js";
+import { asEdits, colonyItem, Near, readColonies, rowOf, type Population } from "../platform/colonies.js";
 import { whereIs } from "../platform/packages.js";
 import {
   CORAL_FORMS, catalogue, flat, itemsOf, layerFor, nameOf, pivotOf, transformed, treeOf, withColonies,
@@ -143,6 +144,21 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
     const listed = (pkg?.site as unknown as { reef?: { colonies_at?: Colony[] } } | undefined)?.reef?.colonies_at;
     return Array.isArray(listed) ? listed.filter((c) => Array.isArray(c.at)) : undefined;
   }, [pkg]);
+  // A big reef's colonies, from the file its build wrote: drawn whole, and
+  // only those changed are the world's.
+  const [population, setPopulation] = useState<{ p: Population; near: Near } | undefined>();
+  useEffect(() => {
+    setPopulation(undefined);
+    const name = (pkg?.site as unknown as { reef?: { coloniesFile?: string } } | undefined)?.reef?.coloniesFile;
+    const file = name ? pkg?.files.find((f) => f.path === name) : undefined;
+    if (!file) return;
+    let stale = false;
+    void fetch(file.url).then((r) => r.arrayBuffer()).then((bytes) => {
+      const p = readColonies(bytes);
+      if (!stale) setPopulation({ p, near: new Near(p) });
+    }).catch(() => undefined);
+    return () => { stale = true; };
+  }, [pkg?.version.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tank is drawn as its glass and the water in it.
   const glass = useMemo(() => {
     const site = pkg?.site as unknown as { enclosed?: boolean; interior?: Glass } | undefined;
@@ -235,10 +251,22 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
 
   const select = useCallback((ids: string[], how: "replace" | "add" | "toggle") => {
     setMenu(undefined);
+    // A built colony of a big reef chosen in the view becomes an item, as
+    // it was built; it is kept only if it is then changed.
+    const rows = population && current.current
+      ? ids.filter((id) => !itemsOf(current.current).has(id)).map((id) => rowOf(id, population.p.count)).filter((r): r is number => r !== undefined)
+      : [];
+    if (rows.length && current.current) {
+      const p = population!.p;
+      // Not a change: choosing it is not editing it.
+      const next = withItems(current.current, rows.map((row) => colonyItem(p, row, `${CORAL_FORMS[p.forms[p.form[row]!] ?? ""]?.name ?? "Coral"} ${row + 1}`)));
+      current.current = next;
+      setDocument(next);
+    }
     setSelected((was) => how === "replace" ? ids
       : how === "add" ? [...was, ...ids.filter((i) => !was.includes(i))]
       : ids.reduce((s, i) => s.includes(i) ? s.filter((x) => x !== i) : [...s, i], was));
-  }, []);
+  }, [population]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ------------------------------------------------------------ putting things in
 
@@ -349,15 +377,24 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
   const remove = () => {
     const ids = new Set(chosenItems.filter((t) => !t.locked).map((t) => t.id));
     if (!ids.size) return;
-    edit((was) => eachItem(was, (t) => ids.has(t.id) ? undefined : t));
+    // A big reef's built colony is not in the world to drop: it is hidden,
+    // which takes it out of the dive.
+    const built = (t: Item) => population !== undefined && rowOf(t.id, population.p.count) !== undefined;
+    edit((was) => eachItem(was, (t) => !ids.has(t.id) ? t : built(t) ? { ...t, hidden: true } : undefined));
     setSelected([]);
   };
 
   const duplicate = () => {
     if (!chosenItems.length || !ground) return;
     const step = Math.max(0.5, ground.acrossM / 200);
-    const copies = chosenItems.map((t) => land({ ...transformed(t, { dx: step, dy: -step, turnDeg: 0, scale: 1 }, { x: 0, y: 0 }),
-      id: named(t.kind), name: `${nameOf(t)} copy`, built: false, laid: false, locked: false }));
+    const copies = chosenItems.map((t) => {
+      // A copy of a big reef's built colony names the colony it copies, so
+      // a dive draws it as that one is drawn.
+      const row = population ? rowOf(t.id, population.p.count) : undefined;
+      return land({ ...transformed(t, { dx: step, dy: -step, turnDeg: 0, scale: 1 }, { x: 0, y: 0 }),
+        id: row !== undefined ? named("coral-new") : named(t.kind), name: `${nameOf(t)} copy`, built: false, laid: false, locked: false,
+        ...(row !== undefined ? { copyOf: t.id } : {}) });
+    });
     edit((was) => withItems(was, copies));
     setSelected(copies.map((t) => t.id));
   };
@@ -450,6 +487,14 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
     return undefined;
   }, [inHand, hover, viewMode, ground]);
 
+  // The rows changed are drawn as the world's items, and left out of the rest.
+  const populationShown = useMemo((): PopulationShown | undefined => {
+    if (!population) return undefined;
+    const taken = new Set<number>();
+    for (const t of all.values()) { const row = t.kind === "coral" ? rowOf(t.id, population.p.count) : undefined; if (row !== undefined) taken.add(row); }
+    return { ...population, taken };
+  }, [population, all]);
+
   // A mission chosen in the scene: its work drawn in the world, as last saved.
   const missionChosen = selected.length === 1 && selected[0]!.startsWith("@mission:") ? selected[0]!.slice("@mission:".length) : undefined;
   const [missionPlan, setMissionPlan] = useState<Plan | undefined>();
@@ -487,7 +532,7 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
     setBusy(true); setTrouble("");
     try {
       const corals = [...all.values()].filter((t) => t.kind === "coral").length;
-      const next = await saveWorld(platform, city, of, document,
+      const next = await saveWorld(platform, city, of, population ? asEdits(document, population.p) : document,
         `${corals} corals, ${(layerOf(document, "structures")?.items ?? []).length} structures`);
       setOf(next);
       setChanged(false);
@@ -641,7 +686,7 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
           <div className="wed-view" onDoubleClick={finishRoute}>
             {ground && document ? (
               <World3D ground={ground} glass={glass} items={shown} selected={selected} mode={viewMode} snap={snap} grid={grid}
-                       ghost={ghost} measure={viewMode === "measure" ? measure : undefined} plan={planShown}
+                       ghost={ghost} measure={viewMode === "measure" ? measure : undefined} plan={planShown} population={populationShown}
                        brush={viewMode === "scatter" && hover ? { ...hover, radiusM: scatter.radiusM } : undefined}
                        showing={{ terrain: visible("terrain"), water: visible("water"), structures: visible("structures"), reef: visible("reef") }}
                        api={view} onPick={pick} onSelect={select} onHover={setHover} onDrop={drop}
