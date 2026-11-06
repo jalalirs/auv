@@ -13,14 +13,15 @@
 // sweep, read afterwards as which doubt breaks the plan and what saves it.
 // A single task without a plan is the quick path beside it (the old Dive).
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AssetVersion, Cost, Mission, Platform } from "@coral-city/api";
 
 import { DOUBTS } from "../catalog/doubts.js";
 import { driftRisks, DRIFT_SHARE, extentOf, hullOf, legsOf, pilotOf, type Drawn, type P, type Stage } from "../catalog/stages.js";
-import { groundOf, SiteChart, type Frame, type Ground, type Thing } from "../parts/SiteChart.js";
-import { drawStages } from "../parts/StagesLayer.js";
+import { groundOf, type Ground, type Thing } from "../parts/SiteChart.js";
+import type { PlanIn3D } from "../parts/StagesIn3D.js";
+import { World3D, type Glass, type Shown, type View3D } from "../parts/World3D.js";
 import { newestOf } from "../platform/packages.js";
 import type { Held, Packages } from "./Deck.js";
 import { BUILT_IN, MANUAL } from "./Dive.js";
@@ -154,9 +155,20 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
   const pilot = useMemo(() => pilotOf(packages.vehicles.get(vehicle)?.dynamics), [packages, vehicle]);
   const legs = useMemo(() => legsOf(stages, things as unknown as Drawn[], launch, hull, pilot),
     [stages, things, launch.x, launch.y, hull, pilot]); // eslint-disable-line react-hooks/exhaustive-deps
-  const overlay = useCallback((g: CanvasRenderingContext2D, frame: Frame) =>
-    drawStages(g, frame, stages, legs, things as unknown as Drawn[], undefined, launch),
-  [stages, legs, things, launch.x, launch.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The plan in its world, as the designer draws it.
+  const in3D = useMemo((): PlanIn3D => ({ stages, legs, drawn: things as unknown as Drawn[], launch }),
+    [stages, legs, things, launch.x, launch.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo((): Shown[] => things.filter((t) => t.kind !== "object")
+    .map((t) => ({ ...(t as unknown as Shown), x: Number(t.x ?? 0), y: Number(t.y ?? 0) })), [things]);
+  const glass = useMemo(() => {
+    const site = pkg?.site as unknown as { enclosed?: boolean; interior?: Glass } | undefined;
+    return site?.enclosed && site.interior ? site.interior : undefined;
+  }, [pkg]);
+  const view = useRef<View3D>(null);
+  // Looked at once its ground and its stages are in.
+  useEffect(() => {
+    if (ground && stages.length) view.current?.frameOn([launch, ...extentOf(stages, things as unknown as Drawn[], legs)]);
+  }, [ground, legs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { water, decided, doubts, scenarios } = useMemo(() => split(picked), [picked]);
   // A tank is watched by its camera whatever is picked; open water is not.
@@ -251,8 +263,12 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
             </label>
             <div className="preview">
               {charting ? <Skeleton className="cover" /> : null}
-              <SiteChart ground={ground} things={things} faintThings overlay={overlay} redraw={stages} cursor="default"
-                         key={chosen?.mission.id} fit={extentOf(stages, things as unknown as Drawn[], legs)} />
+              {ground ? (
+                <World3D ground={ground} glass={glass} items={shown} selected={[]} mode="select" snap={false} grid={false}
+                         showing={{ terrain: true, water: true, structures: true, reef: true }} plan={in3D} api={view}
+                         onPick={() => undefined} onSelect={() => undefined}
+                         onTransformStart={() => undefined} onTransform={() => undefined} onTransformEnd={() => undefined} />
+              ) : null}
             </div>
             {risks.length > 0 ? (
               <p className="warn">
@@ -267,7 +283,7 @@ export function Fly({ platform, held, packages, mission: asked, onDiving, onSwep
               <p className="quiet">
                 {stages.length} {stages.length === 1 ? "stage" : "stages"} ·{" "}
                 {cost?.runs ? `flown ${cost.runs} ${cost.runs === 1 ? "time" : "times"}` : "never flown"} ·{" "}
-                <a onClick={() => onDesign(chosen.mission.id, chosen.place)}>open on its chart</a>
+                <a onClick={() => onDesign(chosen.mission.id, chosen.place)}>open it in its world</a>
               </p>
             ) : null}
             <label><span>Vehicle</span>
