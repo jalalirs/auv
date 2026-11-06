@@ -9,14 +9,14 @@
 //
 // The file, little-endian: "ICOL", a uint32 header length, the header as
 // UTF-8 JSON padded with spaces to four bytes, then five columns: x, y, sizeM,
-// builtDeg as float32 and form as uint8 indexing the header's forms.
+// builtDeg (clockwise from north) as float32 and form as uint8 indexing the
+// header's forms. Rows include the reef's rock framework, form "rock".
 
 import type { Item } from "./scene.js";
 import type { WorldDocument } from "./world.js";
 
 export interface Population {
-  /** The package version the rows belong to. */
-  version: string;
+  /** Of the five columns: what a dive matches the edits to its own build by. */
   digest: string;
   count: number;
   forms: string[];
@@ -34,7 +34,7 @@ export function readColonies(bytes: ArrayBuffer): Population {
   }
   const length = view.getUint32(4, true);
   const header = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes, 8, length))) as {
-    format?: number; version?: string; digest?: string; count?: number; forms?: string[];
+    format?: number; digest?: string; count?: number; forms?: string[];
   };
   if (header.format !== 1) throw new Error(`colonies file format ${header.format ?? "?"}, not 1`);
   const count = Number(header.count ?? 0);
@@ -43,13 +43,13 @@ export function readColonies(bytes: ArrayBuffer): Population {
   const column = () => { const one = new Float32Array(bytes, at, count); at += count * 4; return one; };
   const x = column(), y = column(), sizeM = column(), builtDeg = column();
   const form = new Uint8Array(bytes, at, count);
-  return { version: String(header.version ?? ""), digest: String(header.digest ?? ""), count, forms: header.forms ?? [], x, y, sizeM, builtDeg, form };
+  return { digest: String(header.digest ?? ""), count, forms: header.forms ?? [], x, y, sizeM, builtDeg, form };
 }
 
 /** The file for a population: what a place build writes, and what a test reads. */
 export function writeColonies(p: Omit<Population, "count"> & { count?: number }): ArrayBuffer {
   const count = p.x.length;
-  let json = JSON.stringify({ format: 1, version: p.version, digest: p.digest, count, forms: p.forms });
+  let json = JSON.stringify({ format: 1, digest: p.digest, count, forms: p.forms });
   while ((8 + new TextEncoder().encode(json).length) % 4 !== 0) json += " ";
   const head = new TextEncoder().encode(json);
   const out = new ArrayBuffer(8 + head.length + count * 17);
@@ -126,7 +126,6 @@ export class Near {
 
 // ---------------------------------------------------------------- edits
 
-
 /** A built row as an item of the reef, as it was built: chosen, it can be changed. */
 export function colonyItem(p: Population, row: number, name: string): Item {
   return {
@@ -145,13 +144,14 @@ export function untouched(t: Item, p: Population): boolean {
 }
 
 /** The world as a big reef's edits: only the colonies somebody changed, over
- *  the build they were changed on. Rows chosen and left alone are dropped. */
-export function asEdits(document: WorldDocument, p: Population): WorldDocument {
+ *  the build they were changed on (its digest; the package is for people).
+ *  Rows chosen and left alone are dropped. */
+export function asEdits(document: WorldDocument, p: Population, packageVersion: string): WorldDocument {
   return {
     ...document,
     layers: document.layers.map((l) => l.kind !== "reef" ? l : {
       ...l,
-      params: { ...(l.params ?? {}), colonyEdits: true, editedOn: p.version },
+      params: { ...(l.params ?? {}), colonyEdits: true, editedOn: packageVersion, digest: p.digest },
       items: (l.items ?? []).filter((t) => t.kind !== "coral" || !untouched(t, p)),
     }),
   };

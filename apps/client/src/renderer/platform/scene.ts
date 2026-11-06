@@ -29,6 +29,13 @@ export const CORAL_FORMS: Record<string, { name: string; sizeM: number }> = {
   encrusting: { name: "Encrusting coral", sizeM: 0.4 },
 };
 
+/** What a big reef is built with besides coral, named as people would; built
+ *  rows only, never offered to place. */
+export const BUILT_FORMS: Record<string, string> = { rock: "Reef rock", rubble: "Rubble", holothurian: "Sea cucumber" };
+
+/** A coral form's name, or a built one's. */
+export const formName = (form: string): string => CORAL_FORMS[form]?.name ?? BUILT_FORMS[form] ?? form;
+
 /** Colonies a place was built with become items of its reef, one each, so
  *  they can be chosen, moved and turned. Past this many they stay one node:
  *  a reef of a hundred thousand is a population, not a list. */
@@ -49,7 +56,7 @@ export function withColonies(document: WorldDocument, colonies: Colony[] | undef
     const turn = (((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1) + 1) % 1;
     return {
       id: `coral-${i + 1}`, kind: "coral", form: c.kind,
-      name: `${CORAL_FORMS[c.kind]?.name ?? c.kind} ${counted[c.kind]}`,
+      name: `${formName(c.kind)} ${counted[c.kind]}`,
       x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000,
       sizeM: Math.round(c.sizeM * 1000) / 1000, headingDeg: 0, builtDeg: Math.round(turn * 360),
       built: true, ...(c.prim ? { prim: c.prim } : {}),
@@ -137,7 +144,7 @@ export function iconOf(item: Item): IconName {
 }
 
 export function nameOf(item: Item): string {
-  return String(item.name ?? (item.kind === "coral" ? CORAL_FORMS[String(item.form)]?.name : TOOLS[item.kind]?.name) ?? item.kind);
+  return String(item.name ?? (item.kind === "coral" ? formName(String(item.form)) : TOOLS[item.kind]?.name) ?? item.kind);
 }
 
 export function treeOf(document: WorldDocument, opts: { tank?: { round: boolean; radiusM?: number; depthM: number };
@@ -173,7 +180,7 @@ export function treeOf(document: WorldDocument, opts: { tank?: { round: boolean;
   const byForm = new Map<string, Item[]>();
   for (const c of corals) byForm.set(String(c.form ?? "massive"), [...(byForm.get(String(c.form ?? "massive")) ?? []), c]);
   const reefChildren: Node[] = [...byForm].sort((a, b) => b[1].length - a[1].length).map(([form, list]) => ({
-    id: `@reef:${form}`, name: CORAL_FORMS[form]?.name ?? form, icon: `coral-${form}` as IconName, layer: "reef" as const,
+    id: `@reef:${form}`, name: formName(form), icon: `coral-${form}` as IconName, layer: "reef" as const,
     note: String(list.length), children: list.map(itemNode) }));
   const others = reefItems.filter((t) => t.kind !== "coral");
   reefChildren.push(...others.map(itemNode));

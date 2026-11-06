@@ -866,6 +866,10 @@ export const CORAL_SHAPES: Record<string, { make: () => THREE.BufferGeometry; co
   fan: { make: () => new THREE.CircleGeometry(0.5, 20, 0, Math.PI).translate(0, 0.08, 0), colour: 0xd9714f },
   sponge: { make: () => new THREE.CylinderGeometry(0.28, 0.22, 0.7, 14, 1, true), colour: 0xe09a3c },
   encrusting: { make: () => new THREE.SphereGeometry(0.5, 14, 6, 0, Math.PI * 2, 0, Math.PI / 4), colour: 0xcf7a8e },
+  // Not coral, but built in the same reef: its rock framework, broken rubble, sea cucumbers.
+  rock: { make: () => new THREE.DodecahedronGeometry(0.5, 0).scale(1, 0.55, 1), colour: 0x8a877c },
+  rubble: { make: () => new THREE.DodecahedronGeometry(0.5, 0).scale(1, 0.25, 0.8), colour: 0xa49d8c },
+  holothurian: { make: () => new THREE.CapsuleGeometry(0.12, 0.6, 4, 10).rotateZ(Math.PI / 2).translate(0, 0.1, 0), colour: 0x4a3b33 },
 };
 
 function tableGeometry(): THREE.BufferGeometry {

@@ -7,7 +7,7 @@ import React from "react";
 import type { Asset } from "@coral-city/api";
 import { groundAt, type Ground } from "../parts/SiteChart.js";
 import { drape, restOn } from "../parts/landing.js";
-import { CORAL_FORMS, iconOf, nameOf, type Item, type Node } from "../platform/scene.js";
+import { BUILT_FORMS, CORAL_FORMS, iconOf, nameOf, type Item, type Node } from "../platform/scene.js";
 import type { WorldDocument, WorldLayer } from "../platform/world.js";
 import { Icon, type IconName } from "../ui/icons.js";
 import { TOOLS } from "./Layout.js";
@@ -94,7 +94,7 @@ export function ItemInspector({ item, ground, onChange, onFrame, onDuplicate, on
         <Section title="Coral">
           <label className="in-row"><span>Form</span>
             <select value={String(item.form ?? "massive")} onChange={(e) => onChange({ form: e.target.value })} onKeyDown={(e) => e.stopPropagation()}>
-              {Object.entries(CORAL_FORMS).map(([k, f]) => <option key={k} value={k}>{f.name}</option>)}
+              {formsWith([item]).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
             </select>
           </label>
           {item.prim ? <p className="in-note">In the build as {String(item.prim)}</p> : null}
@@ -146,7 +146,7 @@ export function ManyInspector({ items, onEach, onFrame, onDuplicate, onDelete }:
           <label className="in-row"><span>Form</span>
             <select value={same((t) => String(t.form)) ?? ""} onChange={(e) => onEach(() => ({ form: e.target.value }))} onKeyDown={(e) => e.stopPropagation()}>
               <option value="" disabled>mixed</option>
-              {Object.entries(CORAL_FORMS).map(([k, f]) => <option key={k} value={k}>{f.name}</option>)}
+              {formsWith(items).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
             </select>
           </label>
         </Section>
@@ -160,8 +160,18 @@ export function ManyInspector({ items, onEach, onFrame, onDuplicate, onDelete }:
   );
 }
 
+/** The forms a coral can be given, and any a big reef built them as besides
+ *  (rock, rubble), so a rock chosen reads as a rock. */
+function formsWith(items: Item[]): [string, string][] {
+  const out: [string, string][] = Object.entries(CORAL_FORMS).map(([k, f]) => [k, f.name]);
+  for (const form of new Set(items.map((t) => String(t.form ?? "")))) {
+    if (BUILT_FORMS[form] && !CORAL_FORMS[form]) out.push([form, BUILT_FORMS[form]]);
+  }
+  return out;
+}
+
 function nameOfKind(t: Item): string {
-  if (t.kind === "coral") return (CORAL_FORMS[String(t.form)]?.name ?? "coral").toLowerCase();
+  if (t.kind === "coral") return (CORAL_FORMS[String(t.form)]?.name ?? BUILT_FORMS[String(t.form)] ?? "coral").toLowerCase();
   return (TOOLS[t.kind]?.name ?? (t.kind === "object" ? "object" : t.kind)).toLowerCase();
 }
 

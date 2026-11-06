@@ -27,7 +27,7 @@ import { World3D, type Delta, type Glass, type Mode, type PopulationShown, type 
 import { asEdits, colonyItem, Near, readColonies, rowOf, type Population } from "../platform/colonies.js";
 import { whereIs } from "../platform/packages.js";
 import {
-  CORAL_FORMS, catalogue, flat, itemsOf, layerFor, nameOf, pivotOf, transformed, treeOf, withColonies,
+  CORAL_FORMS, catalogue, formName, flat, itemsOf, layerFor, nameOf, pivotOf, transformed, treeOf, withColonies,
   type Colony, type Item, type Node,
 } from "../platform/scene.js";
 import { layerOf, readWorld, saveWorld, type WorldDocument, type WorldLayer } from "../platform/world.js";
@@ -259,7 +259,7 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
     if (rows.length && current.current) {
       const p = population!.p;
       // Not a change: choosing it is not editing it.
-      const next = withItems(current.current, rows.map((row) => colonyItem(p, row, `${CORAL_FORMS[p.forms[p.form[row]!] ?? ""]?.name ?? "Coral"} ${row + 1}`)));
+      const next = withItems(current.current, rows.map((row) => colonyItem(p, row, `${formName(p.forms[p.form[row]!] ?? "coral")} ${row + 1}`)));
       current.current = next;
       setDocument(next);
     }
@@ -532,7 +532,7 @@ export function World({ platform, held, packages, place, onBack, onChanged, onDi
     setBusy(true); setTrouble("");
     try {
       const corals = [...all.values()].filter((t) => t.kind === "coral").length;
-      const next = await saveWorld(platform, city, of, population ? asEdits(document, population.p) : document,
+      const next = await saveWorld(platform, city, of, population && pkg ? asEdits(document, population.p, pkg.version.id) : document,
         `${corals} corals, ${(layerOf(document, "structures")?.items ?? []).length} structures`);
       setOf(next);
       setChanged(false);

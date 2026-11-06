@@ -68,12 +68,12 @@ func TestAWorldsReefIsHandedOverAsItsColonies(t *testing.T) {
 	if err := json.Unmarshal(got, &reef); err != nil || reef.Version != "ver_1" || len(reef.Items) != 1 || !strings.Contains(string(reef.Items[0]), `"prim":"Tank/Coral0"`) {
 		t.Fatalf("handed over %s", got)
 	}
-	// A big reef hands over only its edits, and the package they were made on.
+	// A big reef hands over only its edits, and the build they were made on.
 	edits := `{"iocean":"world/1","name":"Al Fahal","frame":{"extentM":[3000,3000]},"georef":null,
-	 "layers":[{"id":"reef","kind":"reef","params":{"colonies":1039632,"colonyEdits":true,"editedOn":"ver_pkg"},"items":[
+	 "layers":[{"id":"reef","kind":"reef","params":{"colonies":1039632,"colonyEdits":true,"editedOn":"ver_pkg","digest":"sha256:ab"},"items":[
 	   {"id":"coral-17","kind":"coral","form":"table","x":3,"y":4,"sizeM":0.8,"headingDeg":30,"built":true}]}]}`
 	got, err = WorldColonies("ver_2", json.RawMessage(edits))
-	if err != nil || !strings.Contains(string(got), `"partial":true`) || !strings.Contains(string(got), `"package":"ver_pkg"`) {
+	if err != nil || !strings.Contains(string(got), `"partial":true`) || !strings.Contains(string(got), `"package":"ver_pkg"`) || !strings.Contains(string(got), `"digest":"sha256:ab"`) {
 		t.Fatalf("a big reef handed over %s (%v)", got, err)
 	}
 	// A world that lists no colonies keeps the build's, rather than saying all are gone.
